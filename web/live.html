@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>White Lights — Live</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: #0d0f12; color: #e8eaed;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+    header { padding: 1rem 1.25rem; border-bottom: 1px solid #23262b; }
+    header h1 { margin: 0; font-size: 1.25rem; }
+    header p { margin: .2rem 0 0; opacity: .6; font-size: .85rem; }
+    .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .9rem 1.25rem; }
+    select, button {
+      font: inherit; padding: .5rem .8rem; border-radius: 8px; border: 1px solid #33373e;
+      background: #16191e; color: inherit;
+    }
+    button { cursor: pointer; font-weight: 600; }
+    button.go { background: #2563eb; border-color: #2563eb; }
+    button.stop { background: #b91c1c; border-color: #b91c1c; }
+    #conn { font-size: .8rem; opacity: .7; }
+    .stage { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 1rem; padding: 0 1.25rem 1.25rem; }
+    @media (max-width: 820px) { .stage { grid-template-columns: 1fr; } }
+    .videowrap { position: relative; background: #000; border-radius: 12px; overflow: hidden; min-height: 240px; }
+    #overlay { display: block; width: 100%; height: auto; }
+    #video { display: none; }
+    .panel { display: flex; flex-direction: column; gap: .9rem; }
+    .card { background: #16191e; border: 1px solid #23262b; border-radius: 12px; padding: 1rem; }
+    .lightrow { display: flex; align-items: center; gap: .8rem; }
+    .light { width: 46px; height: 46px; border-radius: 50%; background: #555; flex: none;
+             box-shadow: 0 0 0 4px #0d0f1240 inset; transition: background .12s; }
+    .light.good { background: #16a34a; box-shadow: 0 0 24px #16a34a99; }
+    .light.bad { background: #dc2626; box-shadow: 0 0 24px #dc262699; }
+    .state { font-size: 1.7rem; font-weight: 800; letter-spacing: .5px; }
+    .note { font-size: 1.05rem; opacity: .85; min-height: 1.4em; margin-top: .3rem; }
+    .bar { height: 16px; background: #23262b; border-radius: 8px; overflow: hidden; margin-top: .7rem; }
+    .bar > div { height: 100%; width: 0; background: #555; transition: width .1s, background .12s; }
+    .bar > div.good { background: #16a34a; } .bar > div.bad { background: #dc2626; }
+    .reps { font-size: 1.1rem; } .reps b { font-size: 2rem; }
+    .verdict { font-size: 1.15rem; font-weight: 700; min-height: 1.4em; }
+    .verdict .GOOD { color: #22c55e; } .verdict .NO_LIFT { color: #ef4444; } .verdict .UNCERTAIN { color: #eab308; }
+    .faults { font-size: .85rem; opacity: .8; font-weight: 400; }
+    .hint { font-size: .8rem; opacity: .55; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>White Lights — live squat judge</h1>
+    <p>Depth light turns green when your hip crease breaks below the knee line. Reps counted only when a real descent completes.</p>
+  </header>
+
+  <div class="controls">
+    <select id="cam" title="Camera"></select>
+    <button id="toggle" class="go">Start</button>
+    <span id="conn">idle</span>
+    <span class="hint">If it grabs your iPhone, pick the built-in camera above.</span>
+  </div>
+
+  <div class="stage">
+    <div class="videowrap">
+      <video id="video" playsinline muted></video>
+      <canvas id="overlay" width="640" height="480"></canvas>
+    </div>
+    <aside class="panel">
+      <div class="card">
+        <div class="lightrow">
+          <div class="light" id="light"></div>
+          <div>
+            <div class="state" id="state">—</div>
+            <div class="note" id="note">Press Start.</div>
+          </div>
+        </div>
+        <div class="bar"><div id="fill"></div></div>
+      </div>
+      <div class="card reps">reps completed: <b id="reps">0</b></div>
+      <div class="card">
+        <div class="hint">last rep</div>
+        <div class="verdict" id="verdict">—</div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const video = document.getElementById("video");
+    const overlay = document.getElementById("overlay");
+    const octx = overlay.getContext("2d");
+    const camSel = document.getElementById("cam");
+    const toggle = document.getElementById("toggle");
+    const connEl = document.getElementById("conn");
+    const scratch = document.createElement("canvas");
+    const CONF = 0.25, SEND_W = 480;
+
+    const SKELETON = [
+      ["left_shoulder","right_shoulder"],["left_shoulder","left_hip"],["right_shoulder","right_hip"],
+      ["left_hip","right_hip"],["left_hip","left_knee"],["left_knee","left_ankle"],
+      ["right_hip","right_knee"],["right_knee","right_ankle"],
+    ];
+
+    let ws = null, stream = null, running = false;
+
+    function setConn(t) { connEl.textContent = t; }
+
+    async function listCams() {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const cams = devices.filter(d => d.kind === "videoinput");
+      const cur = camSel.value;
+      camSel.innerHTML = "";
+      cams.forEach((c, i) => {
+        const o = document.createElement("option");
+        o.value = c.deviceId; o.textContent = c.label || `Camera ${i + 1}`;
+        camSel.appendChild(o);
+      });
+      if (cur) camSel.value = cur;
+    }
+
+    async function startStream() {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      const id = camSel.value;
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: id ? { deviceId: { exact: id } } : true, audio: false,
+      });
+      video.srcObject = stream;
+      await video.play();
+      await listCams();
+    }
+
+    function connect() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      ws = new WebSocket(`${proto}://${location.host}/ws/live`);
+      ws.binaryType = "arraybuffer";
+      ws.onopen = () => { setConn("connected"); sendFrame(); };
+      ws.onmessage = (ev) => { render(JSON.parse(ev.data)); if (running) sendFrame(); };
+      ws.onclose = () => setConn("disconnected");
+      ws.onerror = () => setConn("error");
+    }
+
+    function sendFrame() {
+      if (!running || !ws || ws.readyState !== 1) return;
+      const vw = video.videoWidth, vh = video.videoHeight;
+      if (!vw) { setTimeout(sendFrame, 100); return; }
+      if (overlay.width !== vw) { overlay.width = vw; overlay.height = vh; }
+      octx.drawImage(video, 0, 0, overlay.width, overlay.height);  // show the frame we send
+      const s = SEND_W / vw;
+      scratch.width = SEND_W; scratch.height = Math.round(vh * s);
+      scratch.getContext("2d").drawImage(video, 0, 0, scratch.width, scratch.height);
+      scratch.toBlob(b => {
+        if (b && ws && ws.readyState === 1) b.arrayBuffer().then(buf => ws.send(buf));
+      }, "image/jpeg", 0.6);
+    }
+
+    function pt(kp, name) {
+      const k = kp[name];
+      return k && k.c >= CONF ? [k.x * overlay.width, k.y * overlay.height] : null;
+    }
+
+    function render(d) {
+      if (d.error) { setState("ERROR"); document.getElementById("note").textContent = d.error; return; }
+      const kp = d.keypoints || {};
+
+      // knee line
+      const ks = [pt(kp, "left_knee"), pt(kp, "right_knee")].filter(Boolean).map(p => p[1]);
+      if (ks.length) {
+        const ky = Math.min(...ks);
+        octx.strokeStyle = "#22d3ee"; octx.lineWidth = 2;
+        octx.beginPath(); octx.moveTo(0, ky); octx.lineTo(overlay.width, ky); octx.stroke();
+      }
+      // skeleton
+      octx.strokeStyle = "#ffffff"; octx.lineWidth = 4;
+      for (const [a, b] of SKELETON) {
+        const pa = pt(kp, a), pb = pt(kp, b);
+        if (pa && pb) { octx.beginPath(); octx.moveTo(pa[0], pa[1]); octx.lineTo(pb[0], pb[1]); octx.stroke(); }
+      }
+      octx.fillStyle = "#38bdf8";
+      for (const name in kp) { const p = pt(kp, name); if (p) { octx.beginPath(); octx.arc(p[0], p[1], 5, 0, 7); octx.fill(); } }
+
+      // panel
+      setState(d.state);
+      document.getElementById("note").textContent = d.note || "";
+      document.getElementById("reps").textContent = d.rep_count;
+      setLight(d.below_parallel);
+      const fill = document.getElementById("fill");
+      fill.style.width = Math.min(1, d.descent_fraction || 0) * 100 + "%";
+      fill.className = d.below_parallel === true ? "good" : d.below_parallel === false ? "bad" : "";
+      if (d.last_verdict) {
+        const v = d.last_verdict;
+        const faults = v.faults.length ? `<div class="faults">${v.faults.join(", ")}</div>` : "";
+        document.getElementById("verdict").innerHTML = `<span class="${v.verdict}">${v.verdict}</span>${faults}`;
+      }
+    }
+
+    function setState(s) { document.getElementById("state").textContent = s; }
+    function setLight(b) {
+      const el = document.getElementById("light");
+      el.className = "light" + (b === true ? " good" : b === false ? " bad" : "");
+    }
+
+    async function start() {
+      try {
+        await startStream();
+      } catch (e) { setConn("camera error: " + e.message); return; }
+      running = true;
+      toggle.textContent = "Stop"; toggle.className = "stop";
+      connect();
+    }
+    function stop() {
+      running = false;
+      toggle.textContent = "Start"; toggle.className = "go";
+      if (ws) ws.close();
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      setConn("idle");
+    }
+
+    toggle.onclick = () => (running ? stop() : start());
+    camSel.onchange = () => { if (running) startStream(); };
+    navigator.mediaDevices?.enumerateDevices && listCams();
+  </script>
+</body>
+</html>

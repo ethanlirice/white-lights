@@ -3,28 +3,36 @@
 Routes
 ------
 GET  /        -> serves the minimal upload UI (web/index.html)
-POST /judge   -> accepts one or more video uploads, runs the pipeline, returns
-                 per-rep verdicts as JSON. While the core CV logic is stubbed it
-                 responds 501 with a clear "core logic not implemented" message.
+POST /judge   -> accepts one or more video uploads, runs the batch pipeline,
+                 returns per-rep verdicts as JSON.
+GET  /live     -> serves the live webcam judge UI (web/live.html)
+WS   /ws/live  -> streams JPEG frames in, returns per-frame keypoints + the live
+                 tracker's reasoning as JSON (one response per frame).
 
-Deliberately minimal: no database, no auth, synchronous processing. Run with::
+Deliberately minimal: no database, no auth. Run with::
 
     uvicorn api.main:app --reload
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import shutil
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 
 from whitelights.pipeline import judge_video
 from whitelights.types import JudgeResult, RefereeCommand
+
+if TYPE_CHECKING:
+    from whitelights.live import LiveJudge, LiveStatus
+    from whitelights.types import FrameKeypoints
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
@@ -39,6 +47,87 @@ app = FastAPI(
 def index() -> FileResponse:
     """Serve the static upload page."""
     return FileResponse(WEB_DIR / "index.html")
+
+
+@app.get("/live", include_in_schema=False)
+def live_page() -> FileResponse:
+    """Serve the live webcam judge UI."""
+    return FileResponse(WEB_DIR / "live.html")
+
+
+def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height: int) -> dict:
+    """Build the per-frame JSON the browser renders.
+
+    Keypoints are normalised to [0, 1] against the processed frame size so the
+    client can scale them to any canvas dimensions.
+    """
+    w = width or 1
+    h = height or 1
+    keypoints = {
+        name: {"x": kp.x / w, "y": kp.y / h, "c": kp.confidence}
+        for name, kp in frame2d.keypoints.items()
+    }
+    verdict = None
+    if status.last_verdict is not None:
+        v = status.last_verdict
+        verdict = {
+            "verdict": v.verdict.value,
+            "faults": [f.value for f in v.faults],
+            "rep_index": v.rep_index,
+            "depth_margin": v.depth_margin,
+        }
+    return {
+        "keypoints": keypoints,
+        "state": status.state.value,
+        "note": status.note,
+        "below_parallel": status.below_parallel,
+        "descent_fraction": status.descent_fraction,
+        "rep_count": status.rep_count,
+        "rep_completed": status.rep_completed,
+        "last_verdict": verdict,
+    }
+
+
+def _process_frame_bytes(judge: LiveJudge, data: bytes) -> dict:
+    """Decode a JPEG frame and run one live-judging step (runs off-thread)."""
+    import cv2
+    import numpy as np
+
+    arr = np.frombuffer(data, dtype=np.uint8)
+    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if img is None:
+        return {"error": "could not decode frame"}
+    height, width = img.shape[:2]
+    frame2d, _depth, status = judge.process_frame(img)
+    return live_payload(frame2d, status, width, height)
+
+
+@app.websocket("/ws/live")
+async def ws_live(ws: WebSocket) -> None:
+    """Receive JPEG frames, return per-frame keypoints + tracker reasoning."""
+    await ws.accept()
+    from whitelights.live import LiveJudge
+    from whitelights.pose import PoseEstimator
+
+    judge = LiveJudge(PoseEstimator())
+    loop = asyncio.get_event_loop()
+    try:
+        while True:
+            data = await ws.receive_bytes()
+            try:
+                payload = await loop.run_in_executor(None, _process_frame_bytes, judge, data)
+            except ModuleNotFoundError as exc:
+                await ws.send_json(
+                    {"error": f"pose runtime not installed ({exc.name}); pip install -e '.[cv]'"}
+                )
+                await ws.close()
+                return
+            except Exception as exc:  # noqa: BLE001 - keep the socket alive on a bad frame
+                await ws.send_json({"error": str(exc)})
+                continue
+            await ws.send_json(payload)
+    except WebSocketDisconnect:
+        return
 
 
 @app.post("/judge", response_model=JudgeResult)
