@@ -75,6 +75,7 @@ def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height
             "faults": [f.value for f in v.faults],
             "rep_index": v.rep_index,
             "depth_margin": v.depth_margin,
+            "duration_s": round(v.end_time_s - v.start_time_s, 2),
         }
     return {
         "keypoints": keypoints,
@@ -113,7 +114,17 @@ async def ws_live(ws: WebSocket) -> None:
     loop = asyncio.get_event_loop()
     try:
         while True:
-            data = await ws.receive_bytes()
+            message = await ws.receive()
+            if message["type"] == "websocket.disconnect":
+                return
+            # Text frames are control messages (e.g. {"cmd": "reset"} to start a set).
+            text = message.get("text")
+            if text is not None:
+                _handle_control(judge, text)
+                continue
+            data = message.get("bytes")
+            if not data:
+                continue
             try:
                 payload = await loop.run_in_executor(None, _process_frame_bytes, judge, data)
             except ModuleNotFoundError as exc:
@@ -128,6 +139,16 @@ async def ws_live(ws: WebSocket) -> None:
             await ws.send_json(payload)
     except WebSocketDisconnect:
         return
+
+
+def _handle_control(judge: LiveJudge, text: str) -> None:
+    """Apply a client control message. Currently: reset (start a new set)."""
+    try:
+        cmd = json.loads(text)
+    except json.JSONDecodeError:
+        return
+    if cmd.get("cmd") == "reset":
+        judge.reset()
 
 
 @app.post("/judge", response_model=JudgeResult)

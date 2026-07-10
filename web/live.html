@@ -5,218 +5,301 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>White Lights — Live</title>
   <style>
-    :root { color-scheme: dark; }
+    :root { color-scheme: dark; --good: #22c55e; --bad: #ef4444; --warn: #eab308; --line: #23262b; }
     * { box-sizing: border-box; }
-    body {
-      margin: 0; background: #0d0f12; color: #e8eaed;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-    }
-    header { padding: 1rem 1.25rem; border-bottom: 1px solid #23262b; }
-    header h1 { margin: 0; font-size: 1.25rem; }
-    header p { margin: .2rem 0 0; opacity: .6; font-size: .85rem; }
-    .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .9rem 1.25rem; }
-    select, button {
-      font: inherit; padding: .5rem .8rem; border-radius: 8px; border: 1px solid #33373e;
-      background: #16191e; color: inherit;
-    }
+    body { margin: 0; background: #0d0f12; color: #e8eaed;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    a { color: #60a5fa; }
+    header { padding: .9rem 1.25rem; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    header h1 { margin: 0; font-size: 1.15rem; }
+    .modes { display: flex; border: 1px solid #33373e; border-radius: 8px; overflow: hidden; }
+    .modes button { background: #16191e; color: inherit; border: 0; padding: .4rem .8rem;
+      font: inherit; cursor: pointer; }
+    .modes button.on { background: #2563eb; }
+    .modes button:disabled { opacity: .45; cursor: not-allowed; }
+    .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .8rem 1.25rem; }
+    select, button, input { font: inherit; padding: .5rem .7rem; border-radius: 8px;
+      border: 1px solid #33373e; background: #16191e; color: inherit; }
     button { cursor: pointer; font-weight: 600; }
     button.go { background: #2563eb; border-color: #2563eb; }
     button.stop { background: #b91c1c; border-color: #b91c1c; }
-    #conn { font-size: .8rem; opacity: .7; }
-    .stage { display: grid; grid-template-columns: minmax(0,1fr) 340px; gap: 1rem; padding: 0 1.25rem 1.25rem; }
-    @media (max-width: 820px) { .stage { grid-template-columns: 1fr; } }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    #conn { font-size: .8rem; opacity: .65; }
+    .stage { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 1rem; padding: 0 1.25rem 1rem; }
+    @media (max-width: 860px) { .stage { grid-template-columns: 1fr; } }
     .videowrap { position: relative; background: #000; border-radius: 12px; overflow: hidden; min-height: 240px; }
     #overlay { display: block; width: 100%; height: auto; }
     #video { display: none; }
-    .panel { display: flex; flex-direction: column; gap: .9rem; }
-    .card { background: #16191e; border: 1px solid #23262b; border-radius: 12px; padding: 1rem; }
+    #flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .1s; }
+    #flash.good { background: #22c55e; opacity: .35; } #flash.bad { background: #ef4444; opacity: .35; }
+    .panel { display: flex; flex-direction: column; gap: .8rem; }
+    .card { background: #16191e; border: 1px solid var(--line); border-radius: 12px; padding: 1rem; }
     .lightrow { display: flex; align-items: center; gap: .8rem; }
-    .light { width: 46px; height: 46px; border-radius: 50%; background: #555; flex: none;
-             box-shadow: 0 0 0 4px #0d0f1240 inset; transition: background .12s; }
-    .light.good { background: #16a34a; box-shadow: 0 0 24px #16a34a99; }
-    .light.bad { background: #dc2626; box-shadow: 0 0 24px #dc262699; }
-    .state { font-size: 1.7rem; font-weight: 800; letter-spacing: .5px; }
-    .note { font-size: 1.05rem; opacity: .85; min-height: 1.4em; margin-top: .3rem; }
-    .bar { height: 16px; background: #23262b; border-radius: 8px; overflow: hidden; margin-top: .7rem; }
+    .light { width: 44px; height: 44px; border-radius: 50%; background: #555; flex: none; transition: background .12s; }
+    .light.good { background: var(--good); box-shadow: 0 0 22px #22c55e88; }
+    .light.bad { background: var(--bad); box-shadow: 0 0 22px #ef444488; }
+    .state { font-size: 1.6rem; font-weight: 800; letter-spacing: .4px; }
+    .note { opacity: .82; min-height: 1.3em; margin-top: .2rem; }
+    .bar { height: 14px; background: #23262b; border-radius: 7px; overflow: hidden; margin-top: .7rem; }
     .bar > div { height: 100%; width: 0; background: #555; transition: width .1s, background .12s; }
-    .bar > div.good { background: #16a34a; } .bar > div.bad { background: #dc2626; }
-    .reps { font-size: 1.1rem; } .reps b { font-size: 2rem; }
-    .verdict { font-size: 1.15rem; font-weight: 700; min-height: 1.4em; }
-    .verdict .GOOD { color: #22c55e; } .verdict .NO_LIFT { color: #ef4444; } .verdict .UNCERTAIN { color: #eab308; }
-    .faults { font-size: .85rem; opacity: .8; font-weight: 400; }
-    .hint { font-size: .8rem; opacity: .55; }
+    .bar > div.good { background: var(--good); } .bar > div.bad { background: var(--bad); }
+    .setrow { display: flex; gap: .5rem; align-items: center; margin-bottom: .7rem; flex-wrap: wrap; }
+    .setrow input[type=number] { width: 5rem; }
+    .unit { display: flex; }
+    .unit button { border-radius: 0; padding: .5rem .6rem; }
+    .unit button:first-child { border-radius: 8px 0 0 8px; } .unit button:last-child { border-radius: 0 8px 8px 0; }
+    .unit button.on { background: #2563eb; border-color: #2563eb; }
+    ul.reps { list-style: none; margin: .4rem 0 0; padding: 0; max-height: 190px; overflow-y: auto; }
+    ul.reps li { display: flex; gap: .5rem; align-items: baseline; padding: .25rem 0; border-bottom: 1px solid #1c1f24; }
+    .rv { font-weight: 700; } .rv.GOOD { color: var(--good); } .rv.NO_LIFT { color: var(--bad); } .rv.UNCERTAIN { color: var(--warn); }
+    .rf { font-size: .8rem; opacity: .75; } .rmeta { margin-left: auto; font-size: .8rem; opacity: .6; }
+    .summary { font-size: .85rem; opacity: .75; margin-top: .5rem; }
+    section.history { padding: 0 1.25rem 2rem; }
+    section.history h2 { font-size: 1rem; border-bottom: 1px solid var(--line); padding-bottom: .4rem; }
+    .histbtns { display: flex; gap: .5rem; margin-bottom: .6rem; }
+    .histbtns button { padding: .35rem .7rem; font-size: .85rem; }
+    details.set { background: #16191e; border: 1px solid var(--line); border-radius: 10px; padding: .6rem .9rem; margin-bottom: .5rem; }
+    details.set summary { cursor: pointer; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; }
+    details.set .w { font-weight: 700; } .muted { opacity: .6; font-size: .85rem; }
+    .empty { opacity: .5; }
   </style>
 </head>
 <body>
   <header>
-    <h1>White Lights — live squat judge</h1>
-    <p>Depth light turns green when your hip crease breaks below the knee line. Reps counted only when a real descent completes.</p>
+    <h1>White Lights — live</h1>
+    <div class="modes">
+      <button id="mode-training" class="on">🏋️ Training</button>
+      <button id="mode-comp" disabled title="Referee-command single-attempt mode — coming soon">🏆 Competition (soon)</button>
+    </div>
+    <a href="/" style="margin-left:auto;font-size:.85rem">upload a clip →</a>
   </header>
 
   <div class="controls">
-    <select id="cam" title="Camera"></select>
-    <button id="toggle" class="go">Start</button>
+    <select id="cam" title="Pick your camera here if it grabbed your phone"></select>
+    <button id="camBtn" class="go">Start camera</button>
     <span id="conn">idle</span>
-    <span class="hint">If it grabs your iPhone, pick the built-in camera above.</span>
   </div>
 
   <div class="stage">
     <div class="videowrap">
       <video id="video" playsinline muted></video>
       <canvas id="overlay" width="640" height="480"></canvas>
+      <div id="flash"></div>
     </div>
+
     <aside class="panel">
       <div class="card">
         <div class="lightrow">
           <div class="light" id="light"></div>
           <div>
             <div class="state" id="state">—</div>
-            <div class="note" id="note">Press Start.</div>
+            <div class="note" id="note">Press “Start camera”.</div>
           </div>
         </div>
         <div class="bar"><div id="fill"></div></div>
       </div>
-      <div class="card reps">reps completed: <b id="reps">0</b></div>
+
       <div class="card">
-        <div class="hint">last rep</div>
-        <div class="verdict" id="verdict">—</div>
+        <div class="setrow">
+          <label>Weight <input type="number" id="weight" min="0" step="2.5" placeholder="—" /></label>
+          <div class="unit">
+            <button id="u-kg" class="on">kg</button>
+            <button id="u-lb">lb</button>
+          </div>
+          <button id="setBtn" class="go" disabled>Start set</button>
+        </div>
+        <ul class="reps" id="repList"></ul>
+        <div class="summary" id="summary"></div>
       </div>
     </aside>
   </div>
 
-  <script>
-    const video = document.getElementById("video");
-    const overlay = document.getElementById("overlay");
-    const octx = overlay.getContext("2d");
-    const camSel = document.getElementById("cam");
-    const toggle = document.getElementById("toggle");
-    const connEl = document.getElementById("conn");
-    const scratch = document.createElement("canvas");
-    const CONF = 0.25, SEND_W = 480;
+  <section class="history">
+    <h2>History</h2>
+    <div class="histbtns">
+      <button id="exportBtn">Export JSON</button>
+      <button id="importBtn">Import</button>
+      <input type="file" id="importFile" accept="application/json" style="display:none" />
+      <button id="clearBtn">Clear</button>
+    </div>
+    <div id="histList"></div>
+  </section>
 
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const video = $("video"), overlay = $("overlay"), octx = overlay.getContext("2d");
+    const camSel = $("cam"), scratch = document.createElement("canvas");
+    const CONF = 0.25, SEND_W = 480;
     const SKELETON = [
       ["left_shoulder","right_shoulder"],["left_shoulder","left_hip"],["right_shoulder","right_hip"],
       ["left_hip","right_hip"],["left_hip","left_knee"],["left_knee","left_ankle"],
       ["right_hip","right_knee"],["right_knee","right_ankle"],
     ];
+    const HKEY = "wl_history", PKEY = "wl_prefs";
 
-    let ws = null, stream = null, running = false;
+    let ws = null, stream = null, camOn = false;
+    let unit = "kg", currentSet = null;
+    let history = load(HKEY, []);
+    const prefs = load(PKEY, { unit: "kg", weight: "" });
+    unit = prefs.unit || "kg"; setUnit(unit); $("weight").value = prefs.weight || "";
 
-    function setConn(t) { connEl.textContent = t; }
+    function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
+    function save(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+    function savePrefs() { save(PKEY, { unit, weight: $("weight").value }); }
 
+    // ---- camera + websocket ----
     async function listCams() {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const cams = devices.filter(d => d.kind === "videoinput");
-      const cur = camSel.value;
-      camSel.innerHTML = "";
-      cams.forEach((c, i) => {
-        const o = document.createElement("option");
-        o.value = c.deviceId; o.textContent = c.label || `Camera ${i + 1}`;
-        camSel.appendChild(o);
-      });
+      const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+      const cur = camSel.value; camSel.innerHTML = "";
+      cams.forEach((c, i) => { const o = document.createElement("option");
+        o.value = c.deviceId; o.textContent = c.label || `Camera ${i + 1}`; camSel.appendChild(o); });
       if (cur) camSel.value = cur;
     }
-
     async function startStream() {
       if (stream) stream.getTracks().forEach(t => t.stop());
       const id = camSel.value;
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: id ? { deviceId: { exact: id } } : true, audio: false,
-      });
-      video.srcObject = stream;
-      await video.play();
-      await listCams();
+      stream = await navigator.mediaDevices.getUserMedia({ video: id ? { deviceId: { exact: id } } : true, audio: false });
+      video.srcObject = stream; await video.play(); await listCams();
     }
-
     function connect() {
       const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/ws/live`);
-      ws.binaryType = "arraybuffer";
-      ws.onopen = () => { setConn("connected"); sendFrame(); };
-      ws.onmessage = (ev) => { render(JSON.parse(ev.data)); if (running) sendFrame(); };
-      ws.onclose = () => setConn("disconnected");
-      ws.onerror = () => setConn("error");
+      ws = new WebSocket(`${proto}://${location.host}/ws/live`); ws.binaryType = "arraybuffer";
+      ws.onopen = () => { $("conn").textContent = "connected"; sendFrame(); };
+      ws.onmessage = (ev) => { render(JSON.parse(ev.data)); if (camOn) sendFrame(); };
+      ws.onclose = () => $("conn").textContent = "disconnected";
+      ws.onerror = () => $("conn").textContent = "error";
     }
-
     function sendFrame() {
-      if (!running || !ws || ws.readyState !== 1) return;
+      if (!camOn || !ws || ws.readyState !== 1) return;
       const vw = video.videoWidth, vh = video.videoHeight;
       if (!vw) { setTimeout(sendFrame, 100); return; }
       if (overlay.width !== vw) { overlay.width = vw; overlay.height = vh; }
-      octx.drawImage(video, 0, 0, overlay.width, overlay.height);  // show the frame we send
-      const s = SEND_W / vw;
-      scratch.width = SEND_W; scratch.height = Math.round(vh * s);
+      octx.drawImage(video, 0, 0, overlay.width, overlay.height);
+      const s = SEND_W / vw; scratch.width = SEND_W; scratch.height = Math.round(vh * s);
       scratch.getContext("2d").drawImage(video, 0, 0, scratch.width, scratch.height);
-      scratch.toBlob(b => {
-        if (b && ws && ws.readyState === 1) b.arrayBuffer().then(buf => ws.send(buf));
-      }, "image/jpeg", 0.6);
+      scratch.toBlob(b => { if (b && ws && ws.readyState === 1) b.arrayBuffer().then(buf => ws.send(buf)); }, "image/jpeg", 0.6);
+    }
+    async function startCam() {
+      try { await startStream(); } catch (e) { $("conn").textContent = "camera error: " + e.message; return; }
+      camOn = true; $("camBtn").textContent = "Stop camera"; $("camBtn").className = "stop";
+      $("setBtn").disabled = false; connect();
+    }
+    function stopCam() {
+      camOn = false; $("camBtn").textContent = "Start camera"; $("camBtn").className = "go";
+      $("setBtn").disabled = true; if (currentSet) completeSet();
+      if (ws) ws.close(); if (stream) stream.getTracks().forEach(t => t.stop());
+      $("conn").textContent = "idle";
     }
 
-    function pt(kp, name) {
-      const k = kp[name];
-      return k && k.c >= CONF ? [k.x * overlay.width, k.y * overlay.height] : null;
-    }
-
+    // ---- rendering ----
+    function pt(kp, n) { const k = kp[n]; return k && k.c >= CONF ? [k.x * overlay.width, k.y * overlay.height] : null; }
     function render(d) {
-      if (d.error) { setState("ERROR"); document.getElementById("note").textContent = d.error; return; }
+      if (d.error) { $("state").textContent = "ERROR"; $("note").textContent = d.error; return; }
+      if (d.reset) return;
       const kp = d.keypoints || {};
-
-      // knee line
       const ks = [pt(kp, "left_knee"), pt(kp, "right_knee")].filter(Boolean).map(p => p[1]);
-      if (ks.length) {
-        const ky = Math.min(...ks);
-        octx.strokeStyle = "#22d3ee"; octx.lineWidth = 2;
-        octx.beginPath(); octx.moveTo(0, ky); octx.lineTo(overlay.width, ky); octx.stroke();
-      }
-      // skeleton
-      octx.strokeStyle = "#ffffff"; octx.lineWidth = 4;
-      for (const [a, b] of SKELETON) {
-        const pa = pt(kp, a), pb = pt(kp, b);
-        if (pa && pb) { octx.beginPath(); octx.moveTo(pa[0], pa[1]); octx.lineTo(pb[0], pb[1]); octx.stroke(); }
-      }
+      if (ks.length) { const ky = Math.min(...ks); octx.strokeStyle = "#22d3ee"; octx.lineWidth = 2;
+        octx.beginPath(); octx.moveTo(0, ky); octx.lineTo(overlay.width, ky); octx.stroke(); }
+      octx.strokeStyle = "#fff"; octx.lineWidth = 4;
+      for (const [a, b] of SKELETON) { const pa = pt(kp, a), pb = pt(kp, b);
+        if (pa && pb) { octx.beginPath(); octx.moveTo(pa[0], pa[1]); octx.lineTo(pb[0], pb[1]); octx.stroke(); } }
       octx.fillStyle = "#38bdf8";
-      for (const name in kp) { const p = pt(kp, name); if (p) { octx.beginPath(); octx.arc(p[0], p[1], 5, 0, 7); octx.fill(); } }
+      for (const n in kp) { const p = pt(kp, n); if (p) { octx.beginPath(); octx.arc(p[0], p[1], 5, 0, 7); octx.fill(); } }
 
-      // panel
-      setState(d.state);
-      document.getElementById("note").textContent = d.note || "";
-      document.getElementById("reps").textContent = d.rep_count;
+      $("state").textContent = d.state;
+      $("note").textContent = d.note || "";
       setLight(d.below_parallel);
-      const fill = document.getElementById("fill");
+      const fill = $("fill");
       fill.style.width = Math.min(1, d.descent_fraction || 0) * 100 + "%";
       fill.className = d.below_parallel === true ? "good" : d.below_parallel === false ? "bad" : "";
-      if (d.last_verdict) {
-        const v = d.last_verdict;
-        const faults = v.faults.length ? `<div class="faults">${v.faults.join(", ")}</div>` : "";
-        document.getElementById("verdict").innerHTML = `<span class="${v.verdict}">${v.verdict}</span>${faults}`;
-      }
+
+      if (d.rep_completed && d.last_verdict && currentSet) addRep(d.last_verdict);
+    }
+    function setLight(b) { $("light").className = "light" + (b === true ? " good" : b === false ? " bad" : ""); }
+    function flash(good) { const f = $("flash"); f.className = good ? "good" : "bad";
+      setTimeout(() => (f.className = ""), 350); }
+
+    // ---- sets ----
+    function startSet() {
+      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd: "reset" }));
+      const w = $("weight").value; savePrefs();
+      currentSet = { id: Date.now(), mode: "training", weight: w === "" ? null : Number(w), unit,
+        startedAt: new Date().toISOString(), reps: [] };
+      $("setBtn").textContent = "Complete set"; $("setBtn").className = "stop";
+      renderReps();
+    }
+    function completeSet() {
+      if (!currentSet) return;
+      currentSet.endedAt = new Date().toISOString();
+      if (currentSet.reps.length) { history.unshift(currentSet); save(HKEY, history); renderHistory(); }
+      currentSet = null;
+      $("setBtn").textContent = "Start set"; $("setBtn").className = "go";
+      renderReps();
+    }
+    function addRep(v) {
+      currentSet.reps.push({ n: currentSet.reps.length + 1, verdict: v.verdict,
+        faults: v.faults, depth_margin: v.depth_margin, duration_s: v.duration_s });
+      flash(v.verdict === "GOOD");
+      renderReps();
+    }
+    const emoji = (v) => v === "GOOD" ? "✅" : v === "NO_LIFT" ? "❌" : "❔";
+    function repLi(r) {
+      const f = r.faults && r.faults.length ? `<span class="rf">${r.faults.join(", ")}</span>` : "";
+      const meta = r.duration_s != null ? `<span class="rmeta">${r.duration_s}s</span>` : "";
+      return `<li>${emoji(r.verdict)} <span>Rep ${r.n}</span> <span class="rv ${r.verdict}">${r.verdict}</span> ${f} ${meta}</li>`;
+    }
+    function summarize(reps) {
+      const g = reps.filter(r => r.verdict === "GOOD").length;
+      const nl = reps.filter(r => r.verdict === "NO_LIFT").length;
+      const parts = [`${reps.length} rep${reps.length === 1 ? "" : "s"}`];
+      if (g) parts.push(`${g} good`); if (nl) parts.push(`${nl} no-lift`);
+      return parts.join(" · ");
+    }
+    function renderReps() {
+      if (!currentSet) { $("repList").innerHTML = ""; $("summary").textContent = camOn ? "Start a set to log reps." : ""; return; }
+      $("repList").innerHTML = currentSet.reps.map(repLi).join("") || `<li class="empty">Waiting for your first rep…</li>`;
+      $("summary").textContent = currentSet.reps.length ? summarize(currentSet.reps) : "";
     }
 
-    function setState(s) { document.getElementById("state").textContent = s; }
-    function setLight(b) {
-      const el = document.getElementById("light");
-      el.className = "light" + (b === true ? " good" : b === false ? " bad" : "");
+    // ---- history ----
+    function fmtTime(iso) {
+      const d = new Date(iso), now = new Date();
+      const t = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return d.toDateString() === now.toDateString() ? t : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + t;
+    }
+    function renderHistory() {
+      if (!history.length) { $("histList").innerHTML = `<div class="empty">No sets yet.</div>`; return; }
+      $("histList").innerHTML = history.map(s => {
+        const w = s.weight != null ? `<span class="w">${s.weight} ${s.unit}</span>` : `<span class="muted">no weight</span>`;
+        return `<details class="set"><summary><span class="muted">${fmtTime(s.startedAt)}</span> ${w}
+          <span>${summarize(s.reps)}</span></summary>
+          <ul class="reps">${s.reps.map(repLi).join("")}</ul></details>`;
+      }).join("");
     }
 
-    async function start() {
-      try {
-        await startStream();
-      } catch (e) { setConn("camera error: " + e.message); return; }
-      running = true;
-      toggle.textContent = "Stop"; toggle.className = "stop";
-      connect();
-    }
-    function stop() {
-      running = false;
-      toggle.textContent = "Start"; toggle.className = "go";
-      if (ws) ws.close();
-      if (stream) stream.getTracks().forEach(t => t.stop());
-      setConn("idle");
-    }
+    // ---- wiring ----
+    function setUnit(u) { unit = u; $("u-kg").className = u === "kg" ? "on" : ""; $("u-lb").className = u === "lb" ? "on" : ""; savePrefs(); }
+    $("u-kg").onclick = () => setUnit("kg"); $("u-lb").onclick = () => setUnit("lb");
+    $("weight").onchange = savePrefs;
+    $("camBtn").onclick = () => (camOn ? stopCam() : startCam());
+    camSel.onchange = () => { if (camOn) startStream(); };
+    $("setBtn").onclick = () => (currentSet ? completeSet() : startSet());
+    $("exportBtn").onclick = () => {
+      const blob = new Blob([JSON.stringify(history, null, 2)], { type: "application/json" });
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+      a.download = `white-lights-history-${new Date().toISOString().slice(0, 10)}.json`; a.click();
+    };
+    $("importBtn").onclick = () => $("importFile").click();
+    $("importFile").onchange = (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      file.text().then(t => { try { const data = JSON.parse(t);
+        if (Array.isArray(data)) { history = data; save(HKEY, history); renderHistory(); } } catch { alert("Invalid JSON"); } });
+    };
+    $("clearBtn").onclick = () => { if (confirm("Clear all history?")) { history = []; save(HKEY, history); renderHistory(); } };
 
-    toggle.onclick = () => (running ? stop() : start());
-    camSel.onchange = () => { if (running) startStream(); };
     navigator.mediaDevices?.enumerateDevices && listCams();
+    renderHistory(); renderReps();
   </script>
 </body>
 </html>

@@ -68,6 +68,7 @@ def test_live_payload_normalises_keypoints_and_verdict() -> None:
     assert payload["state"] == "DESCENDING"
     assert payload["rep_count"] == 1
     assert payload["last_verdict"]["verdict"] == "NO_LIFT"
+    assert payload["last_verdict"]["duration_s"] == 0.3  # end 0.3 - start 0.0
 
 
 def test_ws_live_reports_missing_pose_runtime() -> None:
@@ -75,6 +76,16 @@ def test_ws_live_reports_missing_pose_runtime() -> None:
     # (this still exercises accept -> receive -> process -> error path).
     with client.websocket_connect("/ws/live") as ws:
         ws.send_bytes(b"not-a-real-jpeg")
+        msg = ws.receive_json()
+        assert "error" in msg
+
+
+def test_ws_live_accepts_reset_control() -> None:
+    # A control message (start-of-set reset) is handled without needing cv, and
+    # the socket stays open afterwards (a following bad frame still errors).
+    with client.websocket_connect("/ws/live") as ws:
+        ws.send_text('{"cmd": "reset"}')
+        ws.send_bytes(b"x")
         msg = ws.receive_json()
         assert "error" in msg
 
