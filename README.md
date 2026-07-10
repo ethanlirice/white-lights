@@ -1,15 +1,44 @@
 # White Lights
 
-Real-time computer-vision squat-depth judge for powerlifting. Point cameras at a
-lifter, and White Lights segments the video into rep attempts and calls each one
-— **GOOD**, **NO_LIFT**, or **UNCERTAIN** — against the federation depth rule
-(hip crease below the top of the knee), with the specific fault(s) flagged.
+Real-time computer-vision powerlifting judge. Open the live web app, point your
+webcam at the platform, and White Lights calls each lift — **GOOD**, **NO_LIFT**,
+or **UNCERTAIN** — against the federation rules, in real time, with the specific
+fault(s) flagged.
 
-> **Status:** v2 is a ground-up rebuild. The **v2.0 depth-only pipeline runs
-> end-to-end** for single-camera clips — pose → smoothing → fusion → depth →
-> reps returns real per-rep GOOD / NO_LIFT / UNCERTAIN verdicts. Still to come:
-> downward-movement (v2.1), command-timing (v2.2), and real multi-camera
-> triangulation + postural faults (v2.3+). See [DESIGN.md](DESIGN.md).
+> **▶︎ Live UI demo (in your browser, nothing to install):**
+> **https://ethanlirice.github.io/white-lights/**
+> *Backendless preview — the interface runs on a built-in simulator so you can
+> click through it. Run it locally with `uvicorn` (below) for real webcam
+> judging.*
+
+**Two modes:**
+
+- 🏋️ **Training** — free reps: pick a weight, start a set, get a live
+  GOOD / NO_LIFT call on every rep, and log your set history (stored in the
+  browser, exportable to JSON).
+- 🏆 **Competition** — the computer plays referee: it waits for a still,
+  locked-out setup, issues the **SQUAT** / **RACK** commands itself, and judges
+  the single attempt on the full rulebook — depth, downward movement,
+  early-descent / early-rack, and lockout — with a "three white lights" reveal.
+
+Under the hood: real-time pose → depth / lockout / motion analysis → a
+referee-command state machine, streamed over a browser ↔ FastAPI WebSocket.
+Squat is fully implemented; **bench press and deadlift are in progress**. When
+a call is genuinely borderline it returns **UNCERTAIN** ("too close to call")
+rather than forcing a guess. See [DESIGN.md](DESIGN.md).
+
+## Screenshots
+
+> _Add screenshots / a short demo GIF here so the UI is visible without running
+> it._ Capture the live app (Training + Competition), drop the files into
+> `docs/screenshots/`, and reference them:
+
+<!--
+![Competition mode — the SQUAT command](docs/screenshots/competition.png)
+![Training mode — live reps + set history](docs/screenshots/training.png)
+-->
+
+<!-- Or just drag images into this README on github.com and they upload + embed automatically. -->
 
 ## What it judges
 

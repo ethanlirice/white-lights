@@ -1,0 +1,38 @@
+name: Deploy live-UI demo to Pages
+
+# Publishes web/live.html as a static GitHub Pages site. With no backend to
+# connect to, the page falls back to its built-in offline simulator, so the full
+# UI is clickable as a live demo. Enable once in the repo:
+#   Settings -> Pages -> Source: "GitHub Actions".
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp web/live.html _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
