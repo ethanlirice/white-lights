@@ -590,6 +590,7 @@
     modeCompBtn.classList.toggle('active', mode === 'competition');
     trainCard.classList.toggle('hidden', mode !== 'training');
     compCard.classList.toggle('hidden', mode !== 'competition');
+    sendControl({ cmd: 'start', mode: mode });  // switch the server-side judge
   }
   modeTrainBtn.addEventListener('click', function(){ setMode('training'); });
   modeCompBtn.addEventListener('click', function(){ setMode('competition'); });
@@ -649,6 +650,7 @@
     compCmd.textContent = '';
     compBanner.classList.remove('show');
     tracker.reset();
+    sendControl({ cmd: 'start', mode: 'competition' });  // reset the real judge for a fresh attempt
   }
   newAttempt.addEventListener('click', function(){ compBanner.classList.remove('show'); startAttempt(); });
   newAttempt2.addEventListener('click', startAttempt);
@@ -713,18 +715,17 @@
 
     if (Array.isArray(status.keypoints)) drawSkeleton(status.keypoints);
 
+    // Real referee commands come from the server's CompetitionTracker.
+    if (mode === 'competition' && compArmed && status.command){
+      issueCommand(status.command);
+    }
+
     if (status.rep_completed && status.verdict){
       if (mode === 'training' && setActive){
         addRep(status.verdict.verdict);
       } else if (mode === 'competition' && compArmed){
-        issueCommand('RACK');
         setTimeout(function(){ revealVerdict(status.verdict); }, 700);
       }
-    }
-
-    if (mode === 'competition' && compArmed && status.state === 'DESCENDING' && !status._squatCalled){
-      status._squatCalled = true;
-      issueCommand('SQUAT');
     }
   }
 
@@ -874,6 +875,7 @@
       clearTimeout(openTimeout);
       stopSimulator();
       setConnStatus('live');
+      sendControl({ cmd: 'start', mode: mode });  // tell the server which judge to run
       sendTimer = setInterval(sendFrame, 150);
     });
     ws.addEventListener('message', function(ev){
@@ -890,6 +892,9 @@
     ws.addEventListener('error', function(){ /* close will follow */ });
   }
 
+  function sendControl(obj){
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+  }
   function sendFrame(){
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     var vw = video.videoWidth, vh = video.videoHeight;
