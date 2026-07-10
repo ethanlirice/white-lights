@@ -5,10 +5,11 @@ lifter, and White Lights segments the video into rep attempts and calls each one
 — **GOOD**, **NO_LIFT**, or **UNCERTAIN** — against the federation depth rule
 (hip crease below the top of the knee), with the specific fault(s) flagged.
 
-> **Status:** v2 is a ground-up rebuild. The scaffolding, pose estimation, HTTP
-> surface, and test/eval harnesses are in place; the core CV judging logic
-> (smoothing, 3D fusion, depth, rep segmentation) is being reimplemented behind
-> stable interfaces. See [DESIGN.md](DESIGN.md).
+> **Status:** v2 is a ground-up rebuild. The **v2.0 depth-only pipeline runs
+> end-to-end** for single-camera clips — pose → smoothing → fusion → depth →
+> reps returns real per-rep GOOD / NO_LIFT / UNCERTAIN verdicts. Still to come:
+> downward-movement (v2.1), command-timing (v2.2), and real multi-camera
+> triangulation + postural faults (v2.3+). See [DESIGN.md](DESIGN.md).
 
 ## What it judges
 
@@ -24,23 +25,23 @@ ascent, command-timing violations, and postural/foot faults.
 ```
                  ┌──────────────┐   one video per camera view
    video(s) ───► │  pose.py     │   YOLO11-pose → per-frame 2D keypoints
-                 │  (WORKING)   │   + confidences, per camera
+                 │  (done)      │   + confidences, per camera
                  └──────┬───────┘
                         │  PoseSequence  (2D, per camera)
                  ┌──────▼───────┐
-                 │ smoothing.py │   de-jitter + gap-fill each track   [stub]
+                 │ smoothing.py │   gap-fill + confidence gate       [done*]
                  └──────┬───────┘
                         │  PoseSequence  (2D, cleaned)
                  ┌──────▼───────┐
-                 │  fusion.py   │   multi-view triangulation → 3D     [stub]
+                 │  fusion.py   │   1 view → 3D lift                 [done†]
                  └──────┬───────┘
                         │  Pose3DSequence  (world coords, +z up)
                  ┌──────▼───────┐
-                 │  depth.py    │   per-frame below-parallel + gating [stub]
+                 │  depth.py    │   per-frame below-parallel + gating [done]
                  └──────┬───────┘
                         │  list[DepthFrameResult]
                  ┌──────▼───────┐
-                 │   reps.py    │   state machine → one verdict/rep   [stub]
+                 │   reps.py    │   segment → one verdict/rep        [done‡]
                  └──────┬───────┘
                         │  list[RepVerdict]
                  ┌──────▼───────┐
@@ -48,6 +49,10 @@ ascent, command-timing violations, and postural/foot faults.
                  └──────────────┘
 
   Orchestrated by whitelights/pipeline.py. Shared types in whitelights/types.py.
+
+  * smoothing: gap-fill done; genuine jitter reduction (One-Euro/Kalman) deferred.
+  † fusion: single-camera lift done; multi-view triangulation raises (v2.3+).
+  ‡ reps: depth verdict done; downward-movement (v2.1) + command-timing (v2.2) deferred.
 ```
 
 - **`whitelights/`** — core package (`pose`, `smoothing`, `fusion`, `depth`,
@@ -82,7 +87,7 @@ ruff). The YOLO11-pose weights (`yolo11n-pose.pt`) auto-download on first run.
 # API + web UI  →  http://127.0.0.1:8000
 uvicorn api.main:app --reload
 
-# Tests (pose helpers pass; stub contracts xfail by design)
+# Tests (deferred-feature contracts xfail by design)
 pytest
 
 # Lint
@@ -92,9 +97,11 @@ ruff check .
 python -m eval.validate --clips-dir data/labelled --labels data/labels.csv
 ```
 
-Until the CV core is implemented, `POST /judge` runs pose estimation and then
-returns **HTTP 501** with a clear "core logic not implemented" message — the
-pipeline is wired end to end.
+A **single-camera** upload now runs the full v2.0 pipeline and returns per-rep
+verdicts as JSON (requires the `cv` extra so the pose model can run). A
+**multi-camera** upload returns **HTTP 501** — real triangulation is not built
+yet (v2.3+); without the `cv` extra installed, `/judge` returns **HTTP 503** with
+an install hint.
 
 ## Metrics
 
