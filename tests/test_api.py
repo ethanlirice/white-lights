@@ -63,12 +63,36 @@ def test_live_payload_normalises_keypoints_and_verdict() -> None:
     )
     payload = main.live_payload(frame, status, width=480, height=240)
 
-    kp = payload["keypoints"]["left_hip"]
-    assert kp["x"] == 0.5 and kp["y"] == 0.5  # normalised to [0, 1]
+    # keypoints: list of {name, x, y, confidence}, normalised to [0, 1]
+    kp = next(k for k in payload["keypoints"] if k["name"] == "left_hip")
+    assert kp["x"] == 0.5 and kp["y"] == 0.5
     assert payload["state"] == "DESCENDING"
-    assert payload["rep_count"] == 1
-    assert payload["last_verdict"]["verdict"] == "NO_LIFT"
-    assert payload["last_verdict"]["duration_s"] == 0.3  # end 0.3 - start 0.0
+    assert payload["depth_progress"] == 0.5
+    # verdict is populated because rep_completed is True
+    assert payload["verdict"]["verdict"] == "NO_LIFT"
+
+
+def test_live_payload_verdict_only_on_rep_completed() -> None:
+    from whitelights.live import LiveState, LiveStatus
+
+    status = LiveStatus(
+        state=LiveState.STANDING,
+        note="standing",
+        below_parallel=None,
+        depth_margin=None,
+        hip_z=None,
+        standing_ref=None,
+        descent_fraction=None,
+        rep_count=0,
+        last_verdict=None,
+        rep_completed=False,
+    )
+    from whitelights.types import FrameKeypoints
+
+    payload = main.live_payload(FrameKeypoints(frame_idx=0, time_s=0.0), status, 480, 240)
+    assert payload["verdict"] is None
+    assert payload["keypoints"] is None  # no detections
+    assert payload["depth_progress"] == 0.0
 
 
 def test_ws_live_reports_missing_pose_runtime() -> None:

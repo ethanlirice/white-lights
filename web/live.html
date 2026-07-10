@@ -1,354 +1,963 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>White Lights — Live</title>
-  <style>
-    :root { color-scheme: dark; --good: #22c55e; --bad: #ef4444; --warn: #eab308; --line: #23262b; }
-    * { box-sizing: border-box; }
-    body { margin: 0; background: #0d0f12; color: #e8eaed;
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-    a { color: #60a5fa; }
-    header { padding: .9rem 1.25rem; border-bottom: 1px solid var(--line);
-      display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
-    header h1 { margin: 0; font-size: 1.15rem; }
-    .modes { display: flex; border: 1px solid #33373e; border-radius: 8px; overflow: hidden; }
-    .modes button { background: #16191e; color: inherit; border: 0; padding: .4rem .8rem; font: inherit; cursor: pointer; }
-    .modes button.on { background: #2563eb; }
-    .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .8rem 1.25rem; }
-    select, button, input { font: inherit; padding: .5rem .7rem; border-radius: 8px; border: 1px solid #33373e; background: #16191e; color: inherit; }
-    button { cursor: pointer; font-weight: 600; }
-    button.go { background: #2563eb; border-color: #2563eb; }
-    button.stop { background: #b91c1c; border-color: #b91c1c; }
-    button:disabled { opacity: .4; cursor: not-allowed; }
-    #conn { font-size: .8rem; opacity: .65; }
-    .stage { display: grid; grid-template-columns: minmax(0,1fr) 360px; gap: 1rem; padding: 0 1.25rem 1rem; }
-    @media (max-width: 860px) { .stage { grid-template-columns: 1fr; } }
-    .videowrap { position: relative; background: #000; border-radius: 12px; overflow: hidden; min-height: 240px; }
-    #overlay { display: block; width: 100%; height: auto; }
-    #video { display: none; }
-    #flash { position: absolute; inset: 0; opacity: 0; pointer-events: none; transition: opacity .1s; }
-    #flash.good { background: #22c55e; opacity: .35; } #flash.bad { background: #ef4444; opacity: .35; }
-    .panel { display: flex; flex-direction: column; gap: .8rem; }
-    .card { background: #16191e; border: 1px solid var(--line); border-radius: 12px; padding: 1rem; }
-    .lightrow { display: flex; align-items: center; gap: .8rem; }
-    .light { width: 44px; height: 44px; border-radius: 50%; background: #555; flex: none; transition: background .12s; }
-    .light.good { background: var(--good); box-shadow: 0 0 22px #22c55e88; }
-    .light.bad { background: var(--bad); box-shadow: 0 0 22px #ef444488; }
-    .state { font-size: 1.5rem; font-weight: 800; letter-spacing: .4px; }
-    .note { opacity: .82; min-height: 1.3em; margin-top: .2rem; }
-    .bar { height: 14px; background: #23262b; border-radius: 7px; overflow: hidden; margin-top: .7rem; }
-    .bar > div { height: 100%; width: 0; background: #555; transition: width .1s, background .12s; }
-    .bar > div.good { background: var(--good); } .bar > div.bad { background: var(--bad); }
-    .setrow { display: flex; gap: .5rem; align-items: center; margin-bottom: .7rem; flex-wrap: wrap; }
-    .setrow input[type=number] { width: 5rem; }
-    .unit { display: flex; }
-    .unit button { border-radius: 0; padding: .5rem .6rem; }
-    .unit button:first-child { border-radius: 8px 0 0 8px; } .unit button:last-child { border-radius: 0 8px 8px 0; }
-    .unit button.on { background: #2563eb; border-color: #2563eb; }
-    ul.reps { list-style: none; margin: .4rem 0 0; padding: 0; max-height: 190px; overflow-y: auto; }
-    ul.reps li { display: flex; gap: .5rem; align-items: baseline; padding: .25rem 0; border-bottom: 1px solid #1c1f24; }
-    .rv { font-weight: 700; } .rv.GOOD, .GOOD { color: var(--good); } .rv.NO_LIFT, .NO_LIFT { color: var(--bad); } .rv.UNCERTAIN, .UNCERTAIN { color: var(--warn); }
-    .rf, .faults { font-size: .8rem; opacity: .75; } .rmeta { margin-left: auto; font-size: .8rem; opacity: .6; }
-    .summary { font-size: .85rem; opacity: .75; margin-top: .5rem; }
-    .compcmd { font-size: 2.4rem; font-weight: 900; letter-spacing: 1px; min-height: 1.2em; }
-    .compcmd.pulse { animation: pulse .45s ease-out; }
-    @keyframes pulse { from { transform: scale(1.4); opacity: .2; } to { transform: scale(1); opacity: 1; } }
-    .compverdict { font-size: 1.6rem; font-weight: 800; min-height: 1.2em; margin: .4rem 0; }
-    section.history { padding: 0 1.25rem 2rem; }
-    section.history h2 { font-size: 1rem; border-bottom: 1px solid var(--line); padding-bottom: .4rem; }
-    .histbtns { display: flex; gap: .5rem; margin-bottom: .6rem; }
-    .histbtns button { padding: .35rem .7rem; font-size: .85rem; }
-    details.set { background: #16191e; border: 1px solid var(--line); border-radius: 10px; padding: .6rem .9rem; margin-bottom: .5rem; }
-    details.set summary { cursor: pointer; display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; }
-    details.set .w { font-weight: 700; } .muted { opacity: .6; font-size: .85rem; }
-    .empty { opacity: .5; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>White Lights — Live Judge</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg: oklch(16% 0.012 260);
+    --bg-2: oklch(12% 0.012 260);
+    --panel: oklch(20% 0.012 260 / 0.62);
+    --panel-solid: oklch(20% 0.012 260);
+    --border: oklch(100% 0 0 / 0.09);
+    --border-strong: oklch(100% 0 0 / 0.18);
+    --text: oklch(96% 0.004 90);
+    --text-dim: oklch(96% 0.004 90 / 0.58);
+    --text-faint: oklch(96% 0.004 90 / 0.34);
+    --red: oklch(58% 0.19 25);
+    --red-glow: oklch(58% 0.19 25 / 0.55);
+    --green: oklch(70% 0.17 150);
+    --green-glow: oklch(70% 0.17 150 / 0.55);
+    --amber: oklch(78% 0.15 85);
+    --amber-glow: oklch(78% 0.15 85 / 0.5);
+    --white-lamp: oklch(98% 0 0);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.7);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-condensed: "Arial Narrow", "Helvetica Neue Condensed", "Roboto Condensed", var(--font-ui);
+    --radius: 18px;
+  }
+  :root[data-theme="light"]{
+    color-scheme: light;
+    --bg: oklch(96% 0.005 90);
+    --bg-2: oklch(92% 0.006 90);
+    --panel: oklch(99% 0.004 90 / 0.72);
+    --panel-solid: oklch(99% 0.004 90);
+    --border: oklch(0% 0 0 / 0.08);
+    --border-strong: oklch(0% 0 0 / 0.16);
+    --text: oklch(20% 0.01 260);
+    --text-dim: oklch(20% 0.01 260 / 0.62);
+    --text-faint: oklch(20% 0.01 260 / 0.38);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.25);
+  }
+  *{ box-sizing: border-box; }
+  html, body{ height: 100%; margin: 0; }
+  body{
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select{ font-family: inherit; color: inherit; }
+  button{ cursor: pointer; }
+  .condensed{
+    font-family: var(--font-condensed);
+    font-stretch: condensed;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .num{ font-variant-numeric: tabular-nums; }
+
+  /* ---------- glass panel primitive ---------- */
+  .glass{
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    backdrop-filter: blur(20px) saturate(1.4);
+    -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    box-shadow: var(--shadow);
+  }
+
+  /* ---------- app shell ---------- */
+  #app{ position: fixed; inset: 0; }
+  #stage{ position: absolute; inset: 0; background: #000; overflow: hidden; }
+  video#video{ position: absolute; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+  canvas#overlay{ position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* subtle vignette so floating panels read on any footage */
+  #vignette{
+    position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(ellipse at center, transparent 45%, oklch(0% 0 0 / 0.45) 100%),
+      linear-gradient(to top, oklch(0% 0 0 / 0.55), transparent 22%);
+  }
+
+  /* ---------- empty state: camera gate ---------- */
+  #camGate{
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background:
+      repeating-linear-gradient(135deg, oklch(28% 0.01 260) 0px, oklch(28% 0.01 260) 2px, oklch(20% 0.01 260) 2px, oklch(20% 0.01 260) 26px);
+    z-index: 5;
+  }
+  #camGate.hidden{ display: none; }
+  .gate-card{ text-align: center; max-width: 380px; padding: 40px 36px; }
+  .gate-lights{ display: flex; gap: 14px; justify-content: center; margin-bottom: 22px; }
+  .gate-dot{ width: 14px; height: 14px; border-radius: 50%; background: var(--text-faint); }
+  .gate-dot.on{ background: var(--white-lamp); box-shadow: 0 0 16px 2px oklch(100% 0 0 / 0.6); }
+  .gate-title{ font-size: 30px; margin: 0 0 8px; }
+  .gate-sub{ color: var(--text-dim); margin: 0 0 26px; font-size: 14px; line-height: 1.5; }
+  #enableCamBtn{
+    background: var(--text); color: var(--bg-2); border: 0; border-radius: 999px;
+    padding: 14px 30px; font-size: 15px; font-weight: 700; letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  #enableCamBtn:active{ transform: scale(0.97); }
+  .gate-error{ margin-top: 16px; color: var(--red); font-size: 13px; min-height: 18px; }
+
+  /* ---------- top bar ---------- */
+  #topbar{
+    position: absolute; top: 0; left: 0; right: 0; z-index: 20;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 20px; gap: 12px;
+  }
+  .brand{ display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
+  .brand-lights{ display: flex; gap: 5px; }
+  .brand-dot{ width: 8px; height: 8px; border-radius: 50%; background: var(--white-lamp); box-shadow: 0 0 8px 1px oklch(100% 0 0 / 0.5); }
+  .brand-word{ font-size: 15px; text-transform: uppercase; }
+
+  .topbar-right{ display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .chip{
+    display: flex; align-items: center; gap: 8px; padding: 9px 14px; font-size: 13px; flex-shrink: 0;
+  }
+  select#cameraSelect{
+    background: transparent; border: 0; outline: none; width: 150px; flex: none;
+    color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
+  }
+  select#cameraSelect option{ background: var(--panel-solid); color: var(--text); }
+  #connDot{ width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex: none; transition: background .3s; }
+  #connDot.live{ background: var(--green); }
+  #connDot.demo{ background: var(--amber); }
+  #themeToggle{ background: transparent; border: 0; padding: 9px 12px; font-size: 16px; line-height: 1; }
+
+  /* ---------- mode switch ---------- */
+  #modeSwitch{
+    position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 20;
+    display: flex; padding: 4px; gap: 4px;
+  }
+  #modeSwitch button{
+    background: transparent; border: 0; padding: 9px 20px; border-radius: 999px;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-dim); transition: background .2s, color .2s;
+  }
+  #modeSwitch button.active{ background: var(--text); color: var(--bg-2); }
+
+  /* ---------- signature depth module ---------- */
+  #depthModule{
+    position: absolute; left: 24px; bottom: 24px; z-index: 20;
+    width: 300px; padding: 22px 22px 20px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .lamp-row{ display: flex; align-items: center; gap: 16px; }
+  .lamp-housing{
+    width: 64px; height: 64px; border-radius: 50%; flex: none;
+    background: radial-gradient(circle at 35% 30%, oklch(30% 0.01 260), oklch(10% 0.01 260) 70%);
+    border: 3px solid oklch(0% 0 0 / 0.5);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: inset 0 2px 6px oklch(0% 0 0 / 0.6);
+  }
+  #light{
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--red);
+    box-shadow: 0 0 22px 6px var(--red-glow), inset 0 -4px 8px oklch(0% 0 0 / 0.25), inset 0 3px 4px oklch(100% 0 0 / 0.35);
+    transition: background .35s ease, box-shadow .35s ease;
+  }
+  #light.white{ background: var(--white-lamp); box-shadow: 0 0 26px 8px oklch(100% 0 0 / 0.55), inset 0 -4px 8px oklch(0% 0 0 / 0.15), inset 0 3px 4px oklch(100% 0 0 / 0.5); }
+  #light.grey{ background: oklch(6% 0 0); box-shadow: inset 0 2px 6px oklch(0% 0 0 / 0.6); }
+  #light.pulse{ animation: lampPulse 1s ease-in-out infinite; }
+  @keyframes lampPulse{ 50%{ filter: brightness(1.18); } }
+
+  .lamp-labels{ display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  #state{ font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); }
+  .depth-caption{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); }
+
+  .depth-track{
+    height: 8px; border-radius: 999px; background: oklch(0% 0 0 / 0.3); overflow: hidden;
+    border: 1px solid var(--border);
+  }
+  #fill{
+    height: 100%; width: 0%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--red), oklch(80% 0.03 90));
+    transition: width .25s ease, background .35s ease;
+  }
+  #note{
+    font-size: 13px; line-height: 1.45; color: var(--text-dim); min-height: 36px;
+  }
+
+  /* ---------- mode cards ---------- */
+  #modeCards{
+    position: absolute; right: 24px; bottom: 24px; z-index: 20; width: 320px;
+  }
+  .mode-card{ padding: 22px; display: flex; flex-direction: column; gap: 16px; }
+  .mode-card.hidden{ display: none; }
+  .card-title{ font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); }
+
+  .weight-row{ display: flex; align-items: center; gap: 10px; }
+  #weightInput{
+    flex: 1; background: oklch(0% 0 0 / 0.25); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 12px; font-size: 20px; font-weight: 800; outline: none; min-width: 0;
+  }
+  :root[data-theme="light"] #weightInput{ background: oklch(0% 0 0 / 0.05); }
+  #weightInput:focus{ border-color: var(--border-strong); }
+  #weightUnit{ display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  #weightUnit button{ background: transparent; border: 0; padding: 10px 12px; font-size: 12px; font-weight: 700; color: var(--text-dim); }
+  #weightUnit button.active{ background: var(--text); color: var(--bg-2); }
+
+  #setBtn, #newAttempt{
+    background: var(--text); color: var(--bg-2); border: 0; border-radius: 12px;
+    padding: 13px; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  #setBtn.active{ background: var(--red); color: white; }
+  #setBtn:disabled, #newAttempt:disabled{ opacity: .4; cursor: not-allowed; }
+
+  #repList{ list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 160px; overflow-y: auto; }
+  #repList:empty::after{
+    content: "Reps will appear here once the set starts.";
+    display: block; font-size: 12px; color: var(--text-faint); padding: 8px 0;
+  }
+  #repList li{
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px; border-radius: 8px; background: oklch(0% 0 0 / 0.18); font-size: 13px;
+  }
+  .badge{ font-size: 10px; font-weight: 800; letter-spacing: 0.06em; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; }
+  .badge.GOOD{ background: var(--green-glow); color: var(--green); }
+  .badge.NO_LIFT{ background: var(--red-glow); color: var(--red); }
+  .badge.UNCERTAIN{ background: var(--amber-glow); color: var(--amber); }
+
+  .comp-status{ font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+  .comp-status strong{ color: var(--text); }
+
+  /* ---------- full-screen flash (beeps / strobe) ---------- */
+  #flash{
+    position: absolute; inset: 0; background: white; opacity: 0; pointer-events: none; z-index: 40;
+  }
+  #flash.go{ animation: flashPop .45s ease-out; }
+  @keyframes flashPop{ 0%{ opacity: 0; } 12%{ opacity: .85; } 100%{ opacity: 0; } }
+
+  /* ---------- competition banner / verdict takeover ---------- */
+  #compBanner{
+    position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+    background: oklch(0% 0 0 / 0); pointer-events: none; opacity: 0; transition: opacity .25s ease, background .25s ease;
+  }
+  #compBanner.show{ opacity: 1; background: oklch(0% 0 0 / 0.72); pointer-events: auto; }
+  .banner-inner{ text-align: center; transform: scale(0.9); transition: transform .3s ease; }
+  #compBanner.show .banner-inner{ transform: scale(1); }
+  .banner-rule{ width: 120px; height: 2px; background: var(--text-faint); margin: 0 auto; }
+  #compCmd{
+    font-size: clamp(64px, 14vw, 160px); line-height: 1; margin: 18px 0; color: var(--white-lamp);
+    text-shadow: 0 0 60px oklch(100% 0 0 / 0.5);
+  }
+  #compVerdict{ display: flex; flex-direction: column; align-items: center; gap: 22px; }
+  .verdict-lights{ display: flex; gap: 22px; }
+  .verdict-lamp{
+    width: 64px; height: 64px; border-radius: 50%;
+    background: oklch(4% 0 0); border: 3px solid oklch(0% 0 0 / 0.6);
+    transition: background .25s ease, box-shadow .25s ease, transform .25s ease;
+    transform: scale(0.7);
+  }
+  .verdict-lamp.lit{ background: var(--white-lamp); box-shadow: 0 0 40px 10px oklch(100% 0 0 / 0.7); transform: scale(1); }
+  .verdict-lamp.lit.red{ background: var(--red); box-shadow: 0 0 40px 10px var(--red-glow); }
+  #compVerdictLabel{ font-size: clamp(28px, 5vw, 44px); text-transform: uppercase; }
+  #compVerdictLabel.GOOD{ color: var(--green); }
+  #compVerdictLabel.NO_LIFT{ color: var(--red); }
+  #compVerdictFaults{ font-size: 14px; color: var(--text-dim); max-width: 420px; text-transform: none; letter-spacing: normal; font-family: var(--font-ui); font-weight: 400; }
+  #compBanner .cta-row{ margin-top: 28px; }
+  #compBanner #newAttempt{ pointer-events: auto; padding: 12px 26px; }
+
+  /* ---------- history drawer ---------- */
+  #historyTab{
+    position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); z-index: 20;
+    padding: 10px 20px; font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--text-dim); background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    backdrop-filter: blur(20px);
+  }
+  #historyDrawer{
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 50;
+    max-height: 72vh; transform: translateY(100%); transition: transform .35s cubic-bezier(.2,.8,.2,1);
+    border-radius: 24px 24px 0 0; display: flex; flex-direction: column;
+  }
+  #historyDrawer.open{ transform: translateY(0); }
+  .drawer-head{ display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 10px; }
+  .drawer-title{ font-size: 18px; }
+  .drawer-actions{ display: flex; gap: 8px; }
+  .drawer-actions button{
+    background: transparent; border: 1px solid var(--border); border-radius: 9px; padding: 8px 12px; font-size: 12px; color: var(--text-dim);
+  }
+  #closeHistBtn{ background: transparent; border: 0; font-size: 20px; color: var(--text-dim); padding: 6px 8px; }
+  #histList{ list-style: none; margin: 0; padding: 6px 22px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  #histList:empty::after{
+    content: "No sets or attempts recorded yet. Finish a training set or a competition attempt to see it here.";
+    color: var(--text-faint); font-size: 13px; padding: 24px 0; display: block; text-align: center;
+  }
+  .hist-row{ background: oklch(0% 0 0 / 0.18); border-radius: 12px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .hist-main{ display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .hist-title{ font-size: 14px; font-weight: 700; }
+  .hist-sub{ font-size: 12px; color: var(--text-faint); }
+  .hist-badges{ display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+  input#importFile{ display: none; }
+
+  /* ---------- misc ---------- */
+  .sr-only{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+  @media (max-width: 760px){
+    #modeSwitch{ top: 68px; }
+    #depthModule, #modeCards{ width: calc(50% - 34px); }
+    #depthModule{ left: 12px; bottom: 12px; padding: 16px; }
+    #modeCards{ right: 12px; bottom: 12px; }
+    .mode-card{ padding: 16px; }
+    .lamp-housing{ width: 52px; height: 52px; }
+    #light{ width: 34px; height: 34px; }
+    #topbar{ padding: 12px 14px; flex-wrap: wrap; }
+    .brand-word{ display: none; }
+  }
+  @media (max-width: 560px){
+    #depthModule, #modeCards{ position: static; width: auto; margin: 0 10px 10px; }
+    #app > #stage{ position: absolute; inset: 0; }
+    #bottomStack{ position: absolute; left: 0; right: 0; bottom: 10px; z-index: 20; display: flex; flex-direction: column; gap: 10px; }
+    #historyTab{ bottom: 8px; }
+  }
+</style>
 </head>
 <body>
-  <header>
-    <h1>White Lights — live</h1>
-    <div class="modes">
-      <button id="mode-training" class="on">🏋️ Training</button>
-      <button id="mode-comp">🏆 Competition</button>
-    </div>
-    <a href="/" style="margin-left:auto;font-size:.85rem">upload a clip →</a>
-  </header>
+<div id="app">
 
-  <div class="controls">
-    <select id="cam" title="Pick your camera here if it grabbed your phone"></select>
-    <button id="camBtn" class="go">Start camera</button>
-    <span id="conn">idle</span>
-  </div>
+  <div id="stage">
+    <video id="video" muted playsinline autoplay></video>
+    <canvas id="overlay"></canvas>
+    <div id="vignette"></div>
 
-  <div class="stage">
-    <div class="videowrap">
-      <video id="video" playsinline muted></video>
-      <canvas id="overlay" width="640" height="480"></canvas>
-      <div id="flash"></div>
+    <div id="camGate">
+      <div class="gate-card">
+        <div class="gate-lights">
+          <div class="gate-dot"></div><div class="gate-dot on"></div><div class="gate-dot"></div>
+        </div>
+        <h1 class="gate-title condensed">WHITE LIGHTS</h1>
+        <p class="gate-sub">Real-time squat-depth judging. Enable your camera to start a training set or run a competition attempt.</p>
+        <button id="enableCamBtn">Enable Camera</button>
+        <div class="gate-error" id="gateError"></div>
+      </div>
     </div>
 
-    <aside class="panel">
-      <div class="card">
-        <div class="lightrow">
-          <div class="light" id="light"></div>
-          <div>
-            <div class="state" id="state">—</div>
-            <div class="note" id="note">Press “Start camera”.</div>
+    <div id="flash"></div>
+
+    <div id="compBanner">
+      <div class="banner-inner">
+        <div class="banner-rule"></div>
+        <div id="compCmd" class="condensed"></div>
+        <div id="compVerdict">
+          <div class="verdict-lights">
+            <div class="verdict-lamp" data-lamp="0"></div>
+            <div class="verdict-lamp" data-lamp="1"></div>
+            <div class="verdict-lamp" data-lamp="2"></div>
+          </div>
+          <div id="compVerdictLabel" class="condensed"></div>
+          <div id="compVerdictFaults"></div>
+          <div class="cta-row">
+            <button id="newAttempt">New Attempt</button>
           </div>
         </div>
-        <div class="bar"><div id="fill"></div></div>
+        <div class="banner-rule"></div>
       </div>
-
-      <div class="card" id="trainCard">
-        <div class="setrow">
-          <label>Weight <input type="number" id="weight" min="0" step="2.5" placeholder="—" /></label>
-          <div class="unit"><button id="u-kg" class="on">kg</button><button id="u-lb">lb</button></div>
-          <button id="setBtn" class="go" disabled>Start set</button>
-        </div>
-        <ul class="reps" id="repList"></ul>
-        <div class="summary" id="summary"></div>
-      </div>
-
-      <div class="card" id="compCard" style="display:none">
-        <div class="compcmd" id="compCmd">—</div>
-        <div class="note" id="compNote">Stand still and locked to get the SQUAT command.</div>
-        <div class="compverdict" id="compVerdict"></div>
-        <div class="setrow">
-          <label>Weight <input type="number" id="compWeight" min="0" step="2.5" placeholder="—" /></label>
-          <button id="newAttempt" class="go" style="display:none">New attempt</button>
-        </div>
-      </div>
-    </aside>
+    </div>
   </div>
 
-  <section class="history">
-    <h2>History</h2>
-    <div class="histbtns">
-      <button id="exportBtn">Export JSON</button>
-      <button id="importBtn">Import</button>
-      <input type="file" id="importFile" accept="application/json" style="display:none" />
-      <button id="clearBtn">Clear</button>
+  <header id="topbar">
+    <div class="brand glass">
+      <div class="brand-lights"><div class="brand-dot"></div><div class="brand-dot"></div><div class="brand-dot"></div></div>
+      <span class="brand-word condensed">White Lights</span>
     </div>
-    <div id="histList"></div>
+    <div class="topbar-right">
+      <label class="chip glass" for="cameraSelect">
+        <span class="sr-only">Camera</span>
+        <select id="cameraSelect"><option value="">Default camera</option></select>
+      </label>
+      <div class="chip glass"><span id="connDot"></span><span id="connLabel" style="font-size:12px;color:var(--text-dim)">Connecting</span></div>
+      <button id="themeToggle" class="glass" title="Toggle theme">◐</button>
+    </div>
+  </header>
+
+  <nav id="modeSwitch" class="glass">
+    <button id="modeTrainBtn" class="active">Training</button>
+    <button id="modeCompBtn">Competition</button>
+  </nav>
+
+  <section id="depthModule" class="glass">
+    <div class="lamp-row">
+      <div class="lamp-housing"><div id="light" class="grey"></div></div>
+      <div class="lamp-labels">
+        <div id="state" class="condensed">STANDING</div>
+        <div class="depth-caption">Depth light</div>
+      </div>
+    </div>
+    <div>
+      <div class="depth-track"><div id="fill"></div></div>
+    </div>
+    <div id="note">Waiting for the camera feed…</div>
   </section>
 
-  <script>
-    const $ = (id) => document.getElementById(id);
-    const video = $("video"), overlay = $("overlay"), octx = overlay.getContext("2d");
-    const camSel = $("cam"), scratch = document.createElement("canvas");
-    const CONF = 0.25, SEND_W = 480;
-    const SKELETON = [
-      ["left_shoulder","right_shoulder"],["left_shoulder","left_hip"],["right_shoulder","right_hip"],
-      ["left_hip","right_hip"],["left_hip","left_knee"],["left_knee","left_ankle"],
-      ["right_hip","right_knee"],["right_knee","right_ankle"],
-    ];
-    const HKEY = "wl_history", PKEY = "wl_prefs";
+  <section id="modeCards">
+    <div id="trainCard" class="mode-card glass">
+      <div class="card-title">Training set</div>
+      <div class="weight-row">
+        <input id="weightInput" type="number" inputmode="decimal" min="0" step="2.5" placeholder="Weight" />
+        <div id="weightUnit"><button data-unit="kg" class="active">kg</button><button data-unit="lb">lb</button></div>
+      </div>
+      <button id="setBtn">Start Set</button>
+      <ol id="repList"></ol>
+    </div>
 
-    let ws = null, stream = null, camOn = false, actx = null;
-    let mode = "training", unit = "kg", currentSet = null;
-    let history = load(HKEY, []);
-    const prefs = load(PKEY, { unit: "kg", weight: "" });
-    unit = prefs.unit || "kg"; setUnit(unit); $("weight").value = prefs.weight || "";
+    <div id="compCard" class="mode-card hidden glass">
+      <div class="card-title">Competition attempt</div>
+      <p class="comp-status" id="compStatus">Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Squat</strong> and <strong>Rack</strong> for you.</p>
+      <button id="newAttempt2">New Attempt</button>
+    </div>
+  </section>
 
-    function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
-    function save(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
-    function savePrefs() { save(PKEY, { unit, weight: $("weight").value }); }
-    function beep(freq, dur) { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-      const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = freq;
-      o.connect(g); g.connect(actx.destination); g.gain.value = 0.12; o.start(); o.stop(actx.currentTime + dur); } catch (e) {} }
+  <button id="historyTab">History ▲</button>
+  <div id="historyDrawer" class="glass">
+    <div class="drawer-head">
+      <div class="drawer-title condensed">History</div>
+      <div class="drawer-actions">
+        <button id="exportBtn">Export</button>
+        <button id="importBtn">Import</button>
+        <button id="clearHistBtn">Clear</button>
+        <button id="closeHistBtn">✕</button>
+      </div>
+    </div>
+    <input id="importFile" type="file" accept="application/json" />
+    <ul id="histList"></ul>
+  </div>
 
-    // ---- camera + websocket ----
-    async function listCams() {
-      const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
-      const cur = camSel.value; camSel.innerHTML = "";
-      cams.forEach((c, i) => { const o = document.createElement("option");
-        o.value = c.deviceId; o.textContent = c.label || `Camera ${i + 1}`; camSel.appendChild(o); });
-      if (cur) camSel.value = cur;
-    }
-    async function startStream() {
-      if (stream) stream.getTracks().forEach(t => t.stop());
-      const id = camSel.value;
-      stream = await navigator.mediaDevices.getUserMedia({ video: id ? { deviceId: { exact: id } } : true, audio: false });
-      video.srcObject = stream; await video.play(); await listCams();
-    }
-    function connect() {
-      const proto = location.protocol === "https:" ? "wss" : "ws";
-      ws = new WebSocket(`${proto}://${location.host}/ws/live`); ws.binaryType = "arraybuffer";
-      ws.onopen = () => { $("conn").textContent = "connected"; startMode(); sendFrame(); };
-      ws.onmessage = (ev) => { render(JSON.parse(ev.data)); if (camOn) sendFrame(); };
-      ws.onclose = () => $("conn").textContent = "disconnected";
-      ws.onerror = () => $("conn").textContent = "error";
-    }
-    function sendFrame() {
-      if (!camOn || !ws || ws.readyState !== 1) return;
-      const vw = video.videoWidth, vh = video.videoHeight;
-      if (!vw) { setTimeout(sendFrame, 100); return; }
-      if (overlay.width !== vw) { overlay.width = vw; overlay.height = vh; }
-      octx.drawImage(video, 0, 0, overlay.width, overlay.height);
-      const s = SEND_W / vw; scratch.width = SEND_W; scratch.height = Math.round(vh * s);
-      scratch.getContext("2d").drawImage(video, 0, 0, scratch.width, scratch.height);
-      scratch.toBlob(b => { if (b && ws && ws.readyState === 1) b.arrayBuffer().then(buf => ws.send(buf)); }, "image/jpeg", 0.6);
-    }
-    async function startCam() {
-      try { await startStream(); } catch (e) { $("conn").textContent = "camera error: " + e.message; return; }
-      camOn = true; $("camBtn").textContent = "Stop camera"; $("camBtn").className = "stop";
-      $("setBtn").disabled = false; beep(660, 0.001); connect();
-    }
-    function stopCam() {
-      camOn = false; $("camBtn").textContent = "Start camera"; $("camBtn").className = "go";
-      $("setBtn").disabled = true; if (currentSet) completeSet();
-      if (ws) ws.close(); if (stream) stream.getTracks().forEach(t => t.stop());
-      $("conn").textContent = "idle";
-    }
+</div>
 
-    // ---- shared render ----
-    function pt(kp, n) { const k = kp[n]; return k && k.c >= CONF ? [k.x * overlay.width, k.y * overlay.height] : null; }
-    function drawOverlay(d) {
-      const kp = d.keypoints || {};
-      const ks = [pt(kp, "left_knee"), pt(kp, "right_knee")].filter(Boolean).map(p => p[1]);
-      if (ks.length) { const ky = Math.min(...ks); octx.strokeStyle = "#22d3ee"; octx.lineWidth = 2;
-        octx.beginPath(); octx.moveTo(0, ky); octx.lineTo(overlay.width, ky); octx.stroke(); }
-      octx.strokeStyle = "#fff"; octx.lineWidth = 4;
-      for (const [a, b] of SKELETON) { const pa = pt(kp, a), pb = pt(kp, b);
-        if (pa && pb) { octx.beginPath(); octx.moveTo(pa[0], pa[1]); octx.lineTo(pb[0], pb[1]); octx.stroke(); } }
-      octx.fillStyle = "#38bdf8";
-      for (const n in kp) { const p = pt(kp, n); if (p) { octx.beginPath(); octx.arc(p[0], p[1], 5, 0, 7); octx.fill(); } }
-    }
-    function render(d) {
-      if (d.error) { $("state").textContent = "ERROR"; $("note").textContent = d.error; return; }
-      if (d.reset) return;
-      drawOverlay(d);
-      $("state").textContent = d.state; $("note").textContent = d.note || "";
-      setLight(d.below_parallel);
-      const fill = $("fill"); fill.style.width = Math.min(1, d.descent_fraction || 0) * 100 + "%";
-      fill.className = d.below_parallel === true ? "good" : d.below_parallel === false ? "bad" : "";
-      if (mode === "training") { if (d.rep_completed && d.last_verdict && currentSet) addRep(d.last_verdict); }
-      else handleComp(d);
-    }
-    function setLight(b) { $("light").className = "light" + (b === true ? " good" : b === false ? " bad" : ""); }
-    function flash(good) { const f = $("flash"); f.className = good ? "good" : "bad"; setTimeout(() => (f.className = ""), 350); }
+<script>
+(function(){
+  "use strict";
 
-    // ---- competition mode ----
-    function showCmd(text, color) { const el = $("compCmd"); el.textContent = text; el.style.color = color || "var(--good)";
-      el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); }
-    function handleComp(d) {
-      if (d.command === "SQUAT") { showCmd("SQUAT!"); beep(880, 0.18); }
-      else if (d.command === "RACK") { showCmd("RACK", "var(--warn)"); beep(440, 0.2); }
-      $("compNote").textContent = d.note || "";
-      if (d.rep_completed && d.last_verdict) {
-        const v = d.last_verdict;
-        const f = v.faults.length ? `<span class="faults"> — ${v.faults.join(", ")}</span>` : "";
-        $("compVerdict").innerHTML = `<span class="${v.verdict}">${v.verdict}</span>${f}`;
-        flash(v.verdict === "GOOD");
-        logAttempt(v);
-        $("newAttempt").style.display = "";
+  /* ===================== THEME ===================== */
+  var root = document.documentElement;
+  var savedTheme = localStorage.getItem('wl.theme');
+  if (savedTheme) root.setAttribute('data-theme', savedTheme);
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var cur = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    var next = cur === 'light' ? 'dark' : 'light';
+    if (next === 'dark') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', 'light');
+    localStorage.setItem('wl.theme', next);
+  });
+
+  /* ===================== ELEMENTS ===================== */
+  var video = document.getElementById('video');
+  var overlay = document.getElementById('overlay');
+  var ctx = overlay.getContext('2d');
+  var camGate = document.getElementById('camGate');
+  var enableCamBtn = document.getElementById('enableCamBtn');
+  var gateError = document.getElementById('gateError');
+  var cameraSelect = document.getElementById('cameraSelect');
+  var connDot = document.getElementById('connDot');
+  var connLabel = document.getElementById('connLabel');
+  var light = document.getElementById('light');
+  var fill = document.getElementById('fill');
+  var stateEl = document.getElementById('state');
+  var noteEl = document.getElementById('note');
+  var flashEl = document.getElementById('flash');
+
+  var modeTrainBtn = document.getElementById('modeTrainBtn');
+  var modeCompBtn = document.getElementById('modeCompBtn');
+  var trainCard = document.getElementById('trainCard');
+  var compCard = document.getElementById('compCard');
+
+  var weightInput = document.getElementById('weightInput');
+  var weightUnit = document.getElementById('weightUnit');
+  var setBtn = document.getElementById('setBtn');
+  var repList = document.getElementById('repList');
+
+  var compBanner = document.getElementById('compBanner');
+  var compCmd = document.getElementById('compCmd');
+  var compVerdict = document.getElementById('compVerdict');
+  var compVerdictLabel = document.getElementById('compVerdictLabel');
+  var compVerdictFaults = document.getElementById('compVerdictFaults');
+  var newAttempt = document.getElementById('newAttempt');
+  var newAttempt2 = document.getElementById('newAttempt2');
+  var compStatus = document.getElementById('compStatus');
+  var verdictLamps = Array.prototype.slice.call(document.querySelectorAll('.verdict-lamp'));
+
+  var historyTab = document.getElementById('historyTab');
+  var historyDrawer = document.getElementById('historyDrawer');
+  var closeHistBtn = document.getElementById('closeHistBtn');
+  var histList = document.getElementById('histList');
+  var exportBtn = document.getElementById('exportBtn');
+  var importBtn = document.getElementById('importBtn');
+  var importFile = document.getElementById('importFile');
+  var clearHistBtn = document.getElementById('clearHistBtn');
+
+  /* ===================== AUDIO (synth beeps, no external files) ===================== */
+  var audioCtx = null;
+  function beep(freq, dur){
+    try{
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      var osc = audioCtx.createOscillator();
+      var gain = audioCtx.createGain();
+      osc.type = 'square';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.22, audioCtx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur + 0.02);
+    }catch(e){ /* audio unavailable, ignore */ }
+  }
+  function flashPulse(){
+    flashEl.classList.remove('go'); void flashEl.offsetWidth; flashEl.classList.add('go');
+  }
+
+  /* ===================== HISTORY (localStorage) ===================== */
+  var HIST_KEY = 'wl.history';
+  function loadHistory(){ try{ return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }catch(e){ return []; } }
+  function saveHistory(list){ localStorage.setItem(HIST_KEY, JSON.stringify(list)); }
+  function addHistoryEntry(entry){
+    var list = loadHistory();
+    list.unshift(entry);
+    saveHistory(list);
+    renderHistory();
+  }
+  function renderHistory(){
+    var list = loadHistory();
+    histList.innerHTML = '';
+    list.forEach(function(entry){
+      var li = document.createElement('li');
+      li.className = 'hist-row';
+      var main = document.createElement('div'); main.className = 'hist-main';
+      var title = document.createElement('div'); title.className = 'hist-title';
+      var sub = document.createElement('div'); sub.className = 'hist-sub';
+      var badges = document.createElement('div'); badges.className = 'hist-badges';
+      var when = new Date(entry.time).toLocaleString();
+      if (entry.type === 'training'){
+        title.textContent = (entry.weight || '—') + ' ' + (entry.unit || 'kg') + ' · ' + entry.reps.length + ' rep' + (entry.reps.length===1?'':'s');
+        sub.textContent = when;
+        entry.reps.forEach(function(r){
+          var b = document.createElement('span'); b.className = 'badge ' + r.verdict; b.textContent = r.verdict.replace('_',' ');
+          badges.appendChild(b);
+        });
+      } else {
+        title.textContent = 'Competition attempt';
+        sub.textContent = when;
+        var b = document.createElement('span'); b.className = 'badge ' + entry.verdict; b.textContent = entry.verdict.replace('_',' ');
+        badges.appendChild(b);
+      }
+      main.appendChild(title); main.appendChild(sub);
+      li.appendChild(main); li.appendChild(badges);
+      histList.appendChild(li);
+    });
+  }
+  renderHistory();
+
+  historyTab.addEventListener('click', function(){ historyDrawer.classList.add('open'); });
+  closeHistBtn.addEventListener('click', function(){ historyDrawer.classList.remove('open'); });
+  exportBtn.addEventListener('click', function(){
+    var blob = new Blob([JSON.stringify(loadHistory(), null, 2)], {type: 'application/json'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'white-lights-history.json';
+    a.click();
+  });
+  importBtn.addEventListener('click', function(){ importFile.click(); });
+  importFile.addEventListener('change', function(){
+    var f = importFile.files[0]; if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var incoming = JSON.parse(reader.result);
+        if (!Array.isArray(incoming)) throw new Error('not an array');
+        var current = loadHistory();
+        saveHistory(incoming.concat(current));
+        renderHistory();
+      }catch(e){ alert('Could not import history: ' + e.message); }
+      importFile.value = '';
+    };
+    reader.readAsText(f);
+  });
+  clearHistBtn.addEventListener('click', function(){
+    if (confirm('Clear all history? This cannot be undone.')){ saveHistory([]); renderHistory(); }
+  });
+
+  /* ===================== MODE SWITCH ===================== */
+  var mode = 'training'; // 'training' | 'competition'
+  function setMode(next){
+    mode = next;
+    modeTrainBtn.classList.toggle('active', mode === 'training');
+    modeCompBtn.classList.toggle('active', mode === 'competition');
+    trainCard.classList.toggle('hidden', mode !== 'training');
+    compCard.classList.toggle('hidden', mode !== 'competition');
+  }
+  modeTrainBtn.addEventListener('click', function(){ setMode('training'); });
+  modeCompBtn.addEventListener('click', function(){ setMode('competition'); });
+
+  weightUnit.addEventListener('click', function(e){
+    var btn = e.target.closest('button'); if (!btn) return;
+    Array.prototype.forEach.call(weightUnit.children, function(c){ c.classList.remove('active'); });
+    btn.classList.add('active');
+  });
+
+  /* ===================== TRAINING SET ===================== */
+  var setActive = false;
+  var currentReps = [];
+  setBtn.addEventListener('click', function(){
+    if (!setActive){
+      setActive = true;
+      currentReps = [];
+      repList.innerHTML = '';
+      setBtn.textContent = 'Complete Set';
+      setBtn.classList.add('active');
+    } else {
+      setActive = false;
+      setBtn.textContent = 'Start Set';
+      setBtn.classList.remove('active');
+      if (currentReps.length){
+        addHistoryEntry({
+          type: 'training', time: Date.now(),
+          weight: weightInput.value || null,
+          unit: (weightUnit.querySelector('.active') || {}).dataset ? weightUnit.querySelector('.active').dataset.unit : 'kg',
+          reps: currentReps
+        });
       }
     }
-    function logAttempt(v) {
-      const w = $("compWeight").value;
-      history.unshift({ id: Date.now(), mode: "competition", at: new Date().toISOString(),
-        weight: w === "" ? null : Number(w), unit, verdict: v.verdict, faults: v.faults });
-      save(HKEY, history); renderHistory();
+  });
+
+  function addRep(verdict){
+    var idx = currentReps.length + 1;
+    currentReps.push({ verdict: verdict, time: Date.now() });
+    var li = document.createElement('li');
+    var label = document.createElement('span'); label.textContent = 'Rep ' + idx;
+    var badge = document.createElement('span'); badge.className = 'badge ' + verdict; badge.textContent = verdict.replace('_',' ');
+    li.appendChild(label); li.appendChild(badge);
+    repList.appendChild(li);
+    repList.scrollTop = repList.scrollHeight;
+  }
+
+  /* ===================== COMPETITION SEQUENCE ===================== */
+  var compArmed = false;
+  var compRunning = false;
+
+  function startAttempt(){
+    if (compRunning) return;
+    compRunning = true;
+    compArmed = true;
+    compStatus.innerHTML = '<strong>Armed.</strong> Get set — the command will come without warning.';
+    compVerdict.style.display = 'none';
+    compCmd.textContent = '';
+    compBanner.classList.remove('show');
+    tracker.reset();
+  }
+  newAttempt.addEventListener('click', function(){ compBanner.classList.remove('show'); startAttempt(); });
+  newAttempt2.addEventListener('click', startAttempt);
+
+  function issueCommand(word){
+    compCmd.textContent = word;
+    compVerdict.style.display = 'none';
+    compBanner.classList.add('show');
+    flashPulse();
+    beep(word === 'SQUAT' ? 880 : 660, 0.18);
+    if (word === 'SQUAT') setTimeout(function(){ if (compCmd.textContent === 'SQUAT') compBanner.classList.remove('show'); }, 1000);
+  }
+
+  function revealVerdict(verdict){
+    compRunning = false;
+    compArmed = false;
+    compCmd.textContent = '';
+    compBanner.classList.add('show');
+    compVerdict.style.display = 'flex';
+    compVerdictLabel.className = 'condensed ' + verdict.verdict;
+    compVerdictLabel.textContent = verdict.verdict.replace('_', ' ');
+    compVerdictFaults.textContent = verdict.faults && verdict.faults.length
+      ? verdict.faults.map(function(f){ return f.replace(/_/g,' '); }).join(' · ')
+      : (verdict.verdict === 'GOOD' ? 'Depth confirmed on all three lights.' : '');
+    verdictLamps.forEach(function(lamp, i){ lamp.classList.remove('lit', 'red'); });
+    var litCount = verdict.verdict === 'GOOD' ? 3 : (verdict.verdict === 'UNCERTAIN' ? 0 : 3);
+    var isRed = verdict.verdict !== 'GOOD';
+    verdictLamps.forEach(function(lamp, i){
+      setTimeout(function(){
+        if (i < litCount){ lamp.classList.add('lit'); if (isRed) lamp.classList.add('red'); }
+      }, i * 220);
+    });
+    beep(verdict.verdict === 'GOOD' ? 990 : 220, 0.4);
+    compStatus.innerHTML = 'Attempt judged <strong>' + verdict.verdict.replace('_',' ') + '</strong>. Press New Attempt to reset.';
+    addHistoryEntry({ type: 'competition', time: Date.now(), verdict: verdict.verdict, faults: verdict.faults || [] });
+  }
+
+  /* ===================== SHARED STATUS HANDLER ===================== */
+  // Same function drives both a real WS payload and the offline simulator,
+  // so the UI logic only has to be written once.
+  var lastLitState = null;
+  function applyStatus(status){
+    // status: { state, below_parallel, depth_progress, rep_completed, verdict, note, keypoints }
+    stateEl.textContent = status.state;
+
+    light.classList.remove('white', 'red', 'grey', 'pulse');
+    if (status.below_parallel === true){ light.classList.add('white'); }
+    else if (status.below_parallel === false){ light.classList.add('red'); }
+    else { light.classList.add('grey'); }
+    if (status.state === 'DESCENDING' || status.state === 'ASCENDING') light.classList.add('pulse');
+
+    if (status.below_parallel !== lastLitState && status.below_parallel === true) flashPulse();
+    lastLitState = status.below_parallel;
+
+    var pct = Math.max(0, Math.min(1, status.depth_progress || 0)) * 100;
+    fill.style.width = pct + '%';
+    fill.style.background = status.below_parallel === true
+      ? 'linear-gradient(90deg, oklch(80% 0.03 90), var(--white-lamp))'
+      : 'linear-gradient(90deg, var(--red), oklch(80% 0.03 90))';
+
+    if (status.note) noteEl.textContent = status.note;
+
+    if (Array.isArray(status.keypoints)) drawSkeleton(status.keypoints);
+
+    if (status.rep_completed && status.verdict){
+      if (mode === 'training' && setActive){
+        addRep(status.verdict.verdict);
+      } else if (mode === 'competition' && compArmed){
+        issueCommand('RACK');
+        setTimeout(function(){ revealVerdict(status.verdict); }, 700);
+      }
     }
 
-    // ---- training sets ----
-    function startSet() {
-      if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd: "reset" }));
-      const w = $("weight").value; savePrefs();
-      currentSet = { id: Date.now(), mode: "training", weight: w === "" ? null : Number(w), unit,
-        startedAt: new Date().toISOString(), reps: [] };
-      $("setBtn").textContent = "Complete set"; $("setBtn").className = "stop"; renderReps();
+    if (mode === 'competition' && compArmed && status.state === 'DESCENDING' && !status._squatCalled){
+      status._squatCalled = true;
+      issueCommand('SQUAT');
     }
-    function completeSet() {
-      if (!currentSet) return;
-      currentSet.endedAt = new Date().toISOString();
-      if (currentSet.reps.length) { history.unshift(currentSet); save(HKEY, history); renderHistory(); }
-      currentSet = null; $("setBtn").textContent = "Start set"; $("setBtn").className = "go"; renderReps();
-    }
-    function addRep(v) {
-      currentSet.reps.push({ n: currentSet.reps.length + 1, verdict: v.verdict, faults: v.faults,
-        depth_margin: v.depth_margin, duration_s: v.duration_s });
-      flash(v.verdict === "GOOD"); renderReps();
-    }
-    const emoji = (v) => v === "GOOD" ? "✅" : v === "NO_LIFT" ? "❌" : "❔";
-    function repLi(r) {
-      const f = r.faults && r.faults.length ? `<span class="rf">${r.faults.join(", ")}</span>` : "";
-      const meta = r.duration_s != null ? `<span class="rmeta">${r.duration_s}s</span>` : "";
-      return `<li>${emoji(r.verdict)} <span>Rep ${r.n}</span> <span class="rv ${r.verdict}">${r.verdict}</span> ${f} ${meta}</li>`;
-    }
-    function summarize(reps) {
-      const g = reps.filter(r => r.verdict === "GOOD").length, nl = reps.filter(r => r.verdict === "NO_LIFT").length;
-      const parts = [`${reps.length} rep${reps.length === 1 ? "" : "s"}`];
-      if (g) parts.push(`${g} good`); if (nl) parts.push(`${nl} no-lift`); return parts.join(" · ");
-    }
-    function renderReps() {
-      if (!currentSet) { $("repList").innerHTML = ""; $("summary").textContent = camOn ? "Start a set to log reps." : ""; return; }
-      $("repList").innerHTML = currentSet.reps.map(repLi).join("") || `<li class="empty">Waiting for your first rep…</li>`;
-      $("summary").textContent = currentSet.reps.length ? summarize(currentSet.reps) : "";
-    }
+  }
 
-    // ---- history ----
-    function fmtTime(iso) {
-      const d = new Date(iso), now = new Date();
-      const t = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      return d.toDateString() === now.toDateString() ? t : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + t;
-    }
-    function wLabel(s) { return s.weight != null ? `<span class="w">${s.weight} ${s.unit}</span>` : `<span class="muted">no weight</span>`; }
-    function renderHistory() {
-      if (!history.length) { $("histList").innerHTML = `<div class="empty">No sets yet.</div>`; return; }
-      $("histList").innerHTML = history.map(s => {
-        if (s.mode === "competition") {
-          const f = s.faults && s.faults.length ? ` <span class="faults">${s.faults.join(", ")}</span>` : "";
-          return `<details class="set"><summary><span class="muted">${fmtTime(s.at)}</span> 🏆 ${wLabel(s)}
-            <span class="rv ${s.verdict}">${s.verdict}</span>${f}</summary>
-            <div class="muted">Competition attempt.</div></details>`;
-        }
-        return `<details class="set"><summary><span class="muted">${fmtTime(s.startedAt)}</span> ${wLabel(s)}
-          <span>${summarize(s.reps)}</span></summary><ul class="reps">${s.reps.map(repLi).join("")}</ul></details>`;
-      }).join("");
-    }
+  /* ===================== CANVAS DRAW LOOP ===================== */
+  var SKELETON_EDGES = [
+    ['left_shoulder','right_shoulder'], ['left_shoulder','left_hip'], ['right_shoulder','right_hip'],
+    ['left_hip','right_hip'], ['left_hip','left_knee'], ['left_knee','left_ankle'],
+    ['right_hip','right_knee'], ['right_knee','right_ankle'],
+    ['left_shoulder','left_elbow'], ['left_elbow','left_wrist'],
+    ['right_shoulder','right_elbow'], ['right_elbow','right_wrist']
+  ];
 
-    // ---- mode ----
-    function startMode() {
-      if (!ws || ws.readyState !== 1) return;
-      ws.send(JSON.stringify({ cmd: "start", mode }));
-      if (mode === "competition") { $("compVerdict").innerHTML = ""; $("newAttempt").style.display = "none"; showCmd("—", "#888"); }
-    }
-    function setMode(m) {
-      if (m === mode) return;
-      if (currentSet) completeSet();
-      mode = m;
-      $("mode-training").className = m === "training" ? "on" : "";
-      $("mode-comp").className = m === "competition" ? "on" : "";
-      $("trainCard").style.display = m === "training" ? "" : "none";
-      $("compCard").style.display = m === "competition" ? "" : "none";
-      startMode();
-    }
+  function resizeCanvas(){
+    var rect = overlay.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    overlay.width = Math.round(rect.width * dpr);
+    overlay.height = Math.round(rect.height * dpr);
+  }
+  window.addEventListener('resize', resizeCanvas);
 
-    // ---- wiring ----
-    function setUnit(u) { unit = u; $("u-kg").className = u === "kg" ? "on" : ""; $("u-lb").className = u === "lb" ? "on" : ""; savePrefs(); }
-    $("u-kg").onclick = () => setUnit("kg"); $("u-lb").onclick = () => setUnit("lb");
-    $("weight").onchange = savePrefs;
-    $("camBtn").onclick = () => (camOn ? stopCam() : startCam());
-    camSel.onchange = () => { if (camOn) startStream(); };
-    $("setBtn").onclick = () => (currentSet ? completeSet() : startSet());
-    $("mode-training").onclick = () => setMode("training");
-    $("mode-comp").onclick = () => setMode("competition");
-    $("newAttempt").onclick = () => startMode();
-    $("exportBtn").onclick = () => {
-      const blob = new Blob([JSON.stringify(history, null, 2)], { type: "application/json" });
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-      a.download = `white-lights-history-${new Date().toISOString().slice(0, 10)}.json`; a.click();
-    };
-    $("importBtn").onclick = () => $("importFile").click();
-    $("importFile").onchange = (e) => { const file = e.target.files[0]; if (!file) return;
-      file.text().then(t => { try { const data = JSON.parse(t); if (Array.isArray(data)) { history = data; save(HKEY, history); renderHistory(); } } catch { alert("Invalid JSON"); } }); };
-    $("clearBtn").onclick = () => { if (confirm("Clear all history?")) { history = []; save(HKEY, history); renderHistory(); } };
+  var lastKeypoints = null;
+  function drawSkeleton(keypoints){ lastKeypoints = keypoints; }
 
-    navigator.mediaDevices?.enumerateDevices && listCams();
-    renderHistory(); renderReps();
-  </script>
+  function drawFrame(){
+    requestAnimationFrame(drawFrame);
+    if (!overlay.width || !overlay.height) return;
+    var vw = video.videoWidth, vh = video.videoHeight;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
+    if (vw && vh && video.readyState >= 2){
+      // object-fit: cover math
+      var cw = overlay.width, ch = overlay.height;
+      var scale = Math.max(cw / vw, ch / vh);
+      var dw = vw * scale, dh = vh * scale;
+      var dx = (cw - dw) / 2, dy = (ch - dh) / 2;
+      ctx.save();
+      ctx.filter = 'saturate(1.05) contrast(1.02)';
+      ctx.drawImage(video, dx, dy, dw, dh);
+      ctx.restore();
+
+      if (lastKeypoints && lastKeypoints.length){
+        var byName = {};
+        lastKeypoints.forEach(function(kp){ byName[kp.name] = kp; });
+        function toCanvas(kp){ return [dx + kp.x * dw, dy + kp.y * dh]; }
+        ctx.lineWidth = Math.max(2, cw * 0.003);
+        ctx.strokeStyle = 'rgba(240,240,240,0.85)';
+        ctx.lineCap = 'round';
+        SKELETON_EDGES.forEach(function(edge){
+          var a = byName[edge[0]], b = byName[edge[1]];
+          if (a && b && a.confidence > 0.25 && b.confidence > 0.25){
+            var pa = toCanvas(a), pb = toCanvas(b);
+            ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
+          }
+        });
+        ctx.fillStyle = 'rgba(255,200,60,0.95)';
+        lastKeypoints.forEach(function(kp){
+          if (kp.confidence > 0.25){
+            var p = toCanvas(kp);
+            ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, cw * 0.004), 0, Math.PI * 2); ctx.fill();
+          }
+        });
+      }
+    } else {
+      ctx.fillStyle = '#000'; ctx.fillRect(0, 0, overlay.width, overlay.height);
+    }
+  }
+  requestAnimationFrame(drawFrame);
+
+  /* ===================== CAMERA ===================== */
+  var currentStream = null;
+  function populateCameraList(){
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    navigator.mediaDevices.enumerateDevices().then(function(devices){
+      var vids = devices.filter(function(d){ return d.kind === 'videoinput'; });
+      cameraSelect.innerHTML = '';
+      if (!vids.length){
+        var opt = document.createElement('option'); opt.textContent = 'Default camera'; opt.value = '';
+        cameraSelect.appendChild(opt);
+        return;
+      }
+      vids.forEach(function(d, i){
+        var opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.textContent = d.label || ('Camera ' + (i + 1));
+        cameraSelect.appendChild(opt);
+      });
+    }).catch(function(){});
+  }
+
+  function startCamera(deviceId){
+    var constraints = { audio: false, video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'user' } };
+    return navigator.mediaDevices.getUserMedia(constraints).then(function(stream){
+      if (currentStream) currentStream.getTracks().forEach(function(t){ t.stop(); });
+      currentStream = stream;
+      video.srcObject = stream;
+      return video.play();
+    }).then(function(){
+      resizeCanvas();
+      populateCameraList();
+      camGate.classList.add('hidden');
+      startTransport();
+    });
+  }
+
+  enableCamBtn.addEventListener('click', function(){
+    gateError.textContent = '';
+    enableCamBtn.disabled = true;
+    startCamera(cameraSelect.value || undefined).catch(function(err){
+      gateError.textContent = 'Camera access failed: ' + (err && err.message ? err.message : err);
+      enableCamBtn.disabled = false;
+    });
+  });
+  cameraSelect.addEventListener('change', function(){
+    if (currentStream) startCamera(cameraSelect.value || undefined).catch(function(){});
+  });
+
+  /* ===================== TRANSPORT: real WS with offline simulator fallback ===================== */
+  var ws = null;
+  var wsConnected = false;
+  var sendTimer = null;
+  var sendCanvas = document.createElement('canvas');
+  var sendCtx = sendCanvas.getContext('2d');
+
+  function setConnStatus(kind){
+    connDot.classList.remove('live', 'demo');
+    if (kind === 'live'){ connDot.classList.add('live'); connLabel.textContent = 'Live'; }
+    else if (kind === 'demo'){ connDot.classList.add('demo'); connLabel.textContent = 'Demo data'; }
+    else { connLabel.textContent = 'Connecting'; }
+  }
+
+  function wsUrl(){
+    var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return proto + '//' + location.host + '/ws/live';
+  }
+
+  function startTransport(){
+    setConnStatus('connecting');
+    try{
+      ws = new WebSocket(wsUrl());
+    }catch(e){ startSimulator(); return; }
+
+    var openTimeout = setTimeout(function(){
+      if (!wsConnected){ try{ ws.close(); }catch(e){} startSimulator(); }
+    }, 2500);
+
+    ws.addEventListener('open', function(){
+      wsConnected = true;
+      clearTimeout(openTimeout);
+      stopSimulator();
+      setConnStatus('live');
+      sendTimer = setInterval(sendFrame, 150);
+    });
+    ws.addEventListener('message', function(ev){
+      try{
+        var status = JSON.parse(ev.data);
+        applyStatus(status);
+      }catch(e){}
+    });
+    ws.addEventListener('close', function(){
+      wsConnected = false;
+      if (sendTimer) clearInterval(sendTimer);
+      startSimulator();
+    });
+    ws.addEventListener('error', function(){ /* close will follow */ });
+  }
+
+  function sendFrame(){
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    var vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return;
+    var targetW = 480, targetH = Math.round(480 * vh / vw);
+    sendCanvas.width = targetW; sendCanvas.height = targetH;
+    sendCtx.drawImage(video, 0, 0, targetW, targetH);
+    sendCanvas.toBlob(function(blob){ if (blob && ws.readyState === WebSocket.OPEN) ws.send(blob); }, 'image/jpeg', 0.7);
+  }
+
+  /* ---- offline simulator: fabricates a plausible squat cycle so the UI is
+     fully demonstrable with no backend running. Feeds the exact same
+     applyStatus() used for real data. ---- */
+  var simTimer = null;
+  function startSimulator(){
+    if (simTimer) return;
+    setConnStatus('demo');
+    noteEl.textContent = 'No judging backend detected — showing simulated demo data.';
+    var t0 = performance.now();
+    var cyclesSquatCalled = false;
+    simTimer = setInterval(function(){
+      var t = (performance.now() - t0) / 1000;
+      var cyclePos = (t % 6) / 6; // 6s cycle: stand -> descend -> ascend -> stand
+      var phase, belowParallel, progress, note;
+      if (cyclePos < 0.15){ phase = 'STANDING'; progress = 0; belowParallel = null; note = 'Standing tall — waiting for descent.'; }
+      else if (cyclePos < 0.5){
+        phase = 'DESCENDING';
+        progress = (cyclePos - 0.15) / 0.35;
+        belowParallel = progress > 0.55;
+        note = belowParallel ? 'Hip crease below the knee line — depth confirmed.' : 'Descending — hip is ' + Math.round((1 - progress) * 6) + 'cm above the knee line.';
+      } else if (cyclePos < 0.85){
+        phase = 'ASCENDING';
+        progress = 1 - (cyclePos - 0.5) / 0.35;
+        belowParallel = progress > 0.55;
+        note = 'Ascending — tracking bar path for downward movement.';
+      } else { phase = 'STANDING'; progress = 0; belowParallel = null; note = 'Lockout held. Ready for the next rep.'; }
+
+      var repCompleted = false;
+      var verdict = null;
+      if (phase === 'STANDING' && cyclePos < 0.02){
+        // wrap point: a rep just completed
+      }
+      var justCompleted = (window.__wlPrevPhase === 'ASCENDING' && phase === 'STANDING');
+      if (justCompleted){
+        repCompleted = true;
+        var good = Math.random() > 0.3;
+        verdict = { verdict: good ? 'GOOD' : 'NO_LIFT', confidence: 0.8 + Math.random()*0.15, faults: good ? [] : ['INSUFFICIENT_DEPTH'] };
+      }
+      window.__wlPrevPhase = phase;
+
+      applyStatus({
+        state: phase,
+        below_parallel: belowParallel,
+        depth_progress: progress,
+        rep_completed: repCompleted,
+        verdict: verdict,
+        note: note,
+        keypoints: null
+      });
+    }, 120);
+  }
+  function stopSimulator(){ if (simTimer){ clearInterval(simTimer); simTimer = null; } }
+
+  /* ===================== INIT ===================== */
+  populateCameraList();
+  applyStatus({ state: 'STANDING', below_parallel: null, depth_progress: 0, note: 'Waiting for the camera feed…' });
+
+})();
+</script>
 </body>
 </html>
