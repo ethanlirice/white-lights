@@ -79,6 +79,7 @@ def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height
         "verdict": verdict,
         "note": status.note,
         "keypoints": keypoints or None,
+        "command": status.command,  # "SQUAT"/"RACK" in competition mode, else None
     }
 
 

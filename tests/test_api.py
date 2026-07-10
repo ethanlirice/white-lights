@@ -114,6 +114,15 @@ def test_ws_live_accepts_reset_control() -> None:
         assert "error" in msg
 
 
+def test_ws_live_switches_to_competition_mode() -> None:
+    # Switching to competition swaps in the CompetitionTracker (no cv needed) and
+    # the socket keeps working.
+    with client.websocket_connect("/ws/live") as ws:
+        ws.send_text('{"cmd": "start", "mode": "competition"}')
+        ws.send_bytes(b"x")
+        assert "error" in ws.receive_json()
+
+
 def test_judge_maps_not_implemented_to_501(monkeypatch) -> None:
     def _raise(*_args, **_kwargs):
         raise NotImplementedError("smoothing not implemented")
