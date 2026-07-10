@@ -116,12 +116,21 @@ with `TODO(ethan)`. Design choices worth noting:
 
 ## Roadmap (incremental feature order)
 
-1. **v2.0 — depth only.** smoothing + fusion (single-cam fallback ok) + depth +
-   a depth-only rep segmenter. Matches the "main basis": below-parallel calls.
-2. **v2.1 — downward movement.** Re-descent detection on the ascent; reuses the
-   same hip trajectory.
-3. **v2.2 — command timing.** Wire referee `START`/`RACK` timestamps (manual,
-   then audio) into EARLY_DESCENT / EARLY_RACK. Interface already present.
-4. **v2.3+ — postural faults.** Lockout, foot movement, bar-on-thighs as added
-   fault flags, plus real multi-camera calibration/triangulation in `fusion`.
+1. **v2.0 — depth only. [done]** smoothing + fusion (single-cam fallback) +
+   depth + a depth-only rep segmenter. The "main basis": below-parallel calls.
+2. **v2.1 — downward movement. [done]** Re-descent detection on the ascent;
+   reuses the same hip trajectory.
+3. **v2.2 — command timing. [done: EARLY_DESCENT]** Referee `START`/`RACK`
+   timestamps wired in. EARLY_DESCENT implemented; EARLY_RACK deferred (needs a
+   rack-motion signal).
+4. **v2.3 — postural faults. [done: lockout + feet]** `posture.py` adds
+   INCOMPLETE_LOCKOUT (hip-knee-ankle angle at lockout) and FOOT_MOVEMENT (ankle
+   drift, thigh-normalised), folded into the rep fault list. Detectors are
+   conservative — they no-op when the needed keypoints are absent.
+   Still deferred: BAR_SUPPORTED_ON_THIGHS (needs bar detection) and real
+   multi-camera calibration/triangulation in `fusion`.
+
+Note: the stub tests referenced above are now real passing tests as each feature
+landed; only genuinely-deferred behaviour (EARLY_RACK, bar-on-thighs, multi-cam)
+remains unimplemented.
 ```

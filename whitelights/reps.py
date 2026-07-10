@@ -15,8 +15,8 @@ pose track); `DepthFrameResult` supplies the pass/fail evidence at the bottom;
 `RefereeCommand`s (optional) bound the attempt so command-timing faults can be
 checked.
 
-What this implementation does (v2.0 depth + v2.1 downward-movement)
------------------------------------------------------------------
+What this implementation does (v2.0 depth through v2.3 postural)
+---------------------------------------------------------------
   * Segments reps from the hip trajectory using a scale-invariant midpoint
     crossing with hysteresis, measured relative to the observed hip-travel range
     of the clip. This holds whether ``z`` is in pixels (single-camera fallback)
@@ -30,26 +30,42 @@ What this implementation does (v2.0 depth + v2.1 downward-movement)
     moved before being told to.
   * Verdict per rep, accumulating faults: GOOD when a confident frame reached
     below parallel and no fault fired; NO_LIFT with the fault list otherwise
-    (EARLY_DESCENT / INSUFFICIENT_DEPTH / DOWNWARD_MOVEMENT); UNCERTAIN when the
-    rep had no confident depth reading *and* no other fault (never forces a depth
-    call on missing signal, but a clear rule fault still fails the lift).
+    (EARLY_DESCENT / INCOMPLETE_LOCKOUT / INSUFFICIENT_DEPTH / DOWNWARD_MOVEMENT /
+    FOOT_MOVEMENT); UNCERTAIN when the rep had no confident depth reading *and* no
+    other fault (never forces a depth call on missing signal, but a clear rule
+    fault still fails the lift).
 
 Deferred (interfaces already carry the needed inputs, so no signature changes):
   * v2.2 — EARLY_RACK. Detecting that the lifter racked before the "Rack!"
     command needs a rack-motion signal (the lifter leaving lockout / walking the
     bar in), which pose-only segmentation does not yet expose; wiring the RACK
     command through is done, the detector is not. TODO(ethan).
-  * v2.3+ — postural / foot faults.
+  * v2.3+ — real multi-camera triangulation (fusion) and BAR_SUPPORTED_ON_THIGHS
+    (needs a bar-detection signal).
+
+Postural faults (v2.3): INCOMPLETE_LOCKOUT (knees not locked at start/finish)
+and FOOT_MOVEMENT (ankle drift during the rep) are evaluated via
+``whitelights.posture`` and folded into the fault list. They are conservative —
+no-ops when the needed keypoints (knees/ankles) are absent.
 """
 
 from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .depth import DepthFrameResult
-from .types import Command, Fault, Pose3DSequence, RefereeCommand, RepVerdict, Verdict
+from .posture import PostureConfig, foot_displacement_ratio, is_locked_out
+from .types import (
+    Command,
+    Fault,
+    FrameKeypoints3D,
+    Pose3DSequence,
+    RefereeCommand,
+    RepVerdict,
+    Verdict,
+)
 
 _HIP_KEYPOINTS = ("left_hip", "right_hip")
 
@@ -81,6 +97,8 @@ class RepConfig(BaseModel):
     # Slack (seconds) before a descent that precedes the START command counts as
     # EARLY_DESCENT — absorbs timestamp/frame quantisation noise.
     command_tolerance_s: float = 0.1
+    # Postural-fault detectors (INCOMPLETE_LOCKOUT / FOOT_MOVEMENT).
+    posture: PostureConfig = Field(default_factory=PostureConfig)
 
 
 def segment_reps(
@@ -184,16 +202,21 @@ def _verdict_for_segment(
         "end_time_s": frames[end].time_s,
     }
 
-    # Accumulate faults in roughly chronological order: command, depth, motion.
+    # Accumulate faults in roughly chronological order: command, lockout, depth,
+    # motion, feet.
     faults: list[Fault] = []
     if _is_early_descent(commands, frames[start].time_s, config):
         faults.append(Fault.EARLY_DESCENT)
+    if _has_incomplete_lockout(frames, start, end, config.posture):
+        faults.append(Fault.INCOMPLETE_LOCKOUT)
     depth_known = bool(confident)
     reached_depth = any(d.is_below_parallel for d in confident)
     if depth_known and not reached_depth:
         faults.append(Fault.INSUFFICIENT_DEPTH)
     if _has_downward_movement(hip_z, start, end, config):
         faults.append(Fault.DOWNWARD_MOVEMENT)
+    if _has_foot_movement(frames, start, end, config.posture):
+        faults.append(Fault.FOOT_MOVEMENT)
 
     if faults:
         verdict = Verdict.NO_LIFT
@@ -253,3 +276,24 @@ def _is_early_descent(
     if not start_times:
         return False
     return descent_start_s < min(start_times) - config.command_tolerance_s
+
+
+def _has_incomplete_lockout(
+    frames: list[FrameKeypoints3D], start: int, end: int, config: PostureConfig
+) -> bool:
+    """True if the knees are definitively not locked at rep start or finish.
+
+    Conservative: only fires on a measurable `is_locked_out(...) is False`; an
+    unmeasurable frame (no knee/ankle keypoints) never faults.
+    """
+    return is_locked_out(frames[start], config) is False or (
+        is_locked_out(frames[end], config) is False
+    )
+
+
+def _has_foot_movement(
+    frames: list[FrameKeypoints3D], start: int, end: int, config: PostureConfig
+) -> bool:
+    """True if an ankle drifted horizontally past the body-scaled threshold."""
+    ratio = foot_displacement_ratio(frames[start : end + 1], config)
+    return ratio is not None and ratio > config.foot_movement_fraction
