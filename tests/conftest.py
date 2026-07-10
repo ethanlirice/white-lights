@@ -157,6 +157,12 @@ def make_squat():
 
 
 @pytest.fixture
+def make_full_squat_from_series():
+    """Return the full-keypoint (with ankles) builder taking an explicit hip series."""
+    return make_full_squat_3d
+
+
+@pytest.fixture
 def make_full_squat():
     """Return a builder for a full-keypoint (with ankles) good-depth squat.
 

@@ -14,13 +14,10 @@
       display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
     header h1 { margin: 0; font-size: 1.15rem; }
     .modes { display: flex; border: 1px solid #33373e; border-radius: 8px; overflow: hidden; }
-    .modes button { background: #16191e; color: inherit; border: 0; padding: .4rem .8rem;
-      font: inherit; cursor: pointer; }
+    .modes button { background: #16191e; color: inherit; border: 0; padding: .4rem .8rem; font: inherit; cursor: pointer; }
     .modes button.on { background: #2563eb; }
-    .modes button:disabled { opacity: .45; cursor: not-allowed; }
     .controls { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .8rem 1.25rem; }
-    select, button, input { font: inherit; padding: .5rem .7rem; border-radius: 8px;
-      border: 1px solid #33373e; background: #16191e; color: inherit; }
+    select, button, input { font: inherit; padding: .5rem .7rem; border-radius: 8px; border: 1px solid #33373e; background: #16191e; color: inherit; }
     button { cursor: pointer; font-weight: 600; }
     button.go { background: #2563eb; border-color: #2563eb; }
     button.stop { background: #b91c1c; border-color: #b91c1c; }
@@ -39,7 +36,7 @@
     .light { width: 44px; height: 44px; border-radius: 50%; background: #555; flex: none; transition: background .12s; }
     .light.good { background: var(--good); box-shadow: 0 0 22px #22c55e88; }
     .light.bad { background: var(--bad); box-shadow: 0 0 22px #ef444488; }
-    .state { font-size: 1.6rem; font-weight: 800; letter-spacing: .4px; }
+    .state { font-size: 1.5rem; font-weight: 800; letter-spacing: .4px; }
     .note { opacity: .82; min-height: 1.3em; margin-top: .2rem; }
     .bar { height: 14px; background: #23262b; border-radius: 7px; overflow: hidden; margin-top: .7rem; }
     .bar > div { height: 100%; width: 0; background: #555; transition: width .1s, background .12s; }
@@ -52,9 +49,13 @@
     .unit button.on { background: #2563eb; border-color: #2563eb; }
     ul.reps { list-style: none; margin: .4rem 0 0; padding: 0; max-height: 190px; overflow-y: auto; }
     ul.reps li { display: flex; gap: .5rem; align-items: baseline; padding: .25rem 0; border-bottom: 1px solid #1c1f24; }
-    .rv { font-weight: 700; } .rv.GOOD { color: var(--good); } .rv.NO_LIFT { color: var(--bad); } .rv.UNCERTAIN { color: var(--warn); }
-    .rf { font-size: .8rem; opacity: .75; } .rmeta { margin-left: auto; font-size: .8rem; opacity: .6; }
+    .rv { font-weight: 700; } .rv.GOOD, .GOOD { color: var(--good); } .rv.NO_LIFT, .NO_LIFT { color: var(--bad); } .rv.UNCERTAIN, .UNCERTAIN { color: var(--warn); }
+    .rf, .faults { font-size: .8rem; opacity: .75; } .rmeta { margin-left: auto; font-size: .8rem; opacity: .6; }
     .summary { font-size: .85rem; opacity: .75; margin-top: .5rem; }
+    .compcmd { font-size: 2.4rem; font-weight: 900; letter-spacing: 1px; min-height: 1.2em; }
+    .compcmd.pulse { animation: pulse .45s ease-out; }
+    @keyframes pulse { from { transform: scale(1.4); opacity: .2; } to { transform: scale(1); opacity: 1; } }
+    .compverdict { font-size: 1.6rem; font-weight: 800; min-height: 1.2em; margin: .4rem 0; }
     section.history { padding: 0 1.25rem 2rem; }
     section.history h2 { font-size: 1rem; border-bottom: 1px solid var(--line); padding-bottom: .4rem; }
     .histbtns { display: flex; gap: .5rem; margin-bottom: .6rem; }
@@ -70,7 +71,7 @@
     <h1>White Lights — live</h1>
     <div class="modes">
       <button id="mode-training" class="on">🏋️ Training</button>
-      <button id="mode-comp" disabled title="Referee-command single-attempt mode — coming soon">🏆 Competition (soon)</button>
+      <button id="mode-comp">🏆 Competition</button>
     </div>
     <a href="/" style="margin-left:auto;font-size:.85rem">upload a clip →</a>
   </header>
@@ -100,17 +101,24 @@
         <div class="bar"><div id="fill"></div></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="trainCard">
         <div class="setrow">
           <label>Weight <input type="number" id="weight" min="0" step="2.5" placeholder="—" /></label>
-          <div class="unit">
-            <button id="u-kg" class="on">kg</button>
-            <button id="u-lb">lb</button>
-          </div>
+          <div class="unit"><button id="u-kg" class="on">kg</button><button id="u-lb">lb</button></div>
           <button id="setBtn" class="go" disabled>Start set</button>
         </div>
         <ul class="reps" id="repList"></ul>
         <div class="summary" id="summary"></div>
+      </div>
+
+      <div class="card" id="compCard" style="display:none">
+        <div class="compcmd" id="compCmd">—</div>
+        <div class="note" id="compNote">Stand still and locked to get the SQUAT command.</div>
+        <div class="compverdict" id="compVerdict"></div>
+        <div class="setrow">
+          <label>Weight <input type="number" id="compWeight" min="0" step="2.5" placeholder="—" /></label>
+          <button id="newAttempt" class="go" style="display:none">New attempt</button>
+        </div>
       </div>
     </aside>
   </div>
@@ -138,8 +146,8 @@
     ];
     const HKEY = "wl_history", PKEY = "wl_prefs";
 
-    let ws = null, stream = null, camOn = false;
-    let unit = "kg", currentSet = null;
+    let ws = null, stream = null, camOn = false, actx = null;
+    let mode = "training", unit = "kg", currentSet = null;
     let history = load(HKEY, []);
     const prefs = load(PKEY, { unit: "kg", weight: "" });
     unit = prefs.unit || "kg"; setUnit(unit); $("weight").value = prefs.weight || "";
@@ -147,6 +155,9 @@
     function load(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } }
     function save(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
     function savePrefs() { save(PKEY, { unit, weight: $("weight").value }); }
+    function beep(freq, dur) { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = freq;
+      o.connect(g); g.connect(actx.destination); g.gain.value = 0.12; o.start(); o.stop(actx.currentTime + dur); } catch (e) {} }
 
     // ---- camera + websocket ----
     async function listCams() {
@@ -165,7 +176,7 @@
     function connect() {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}/ws/live`); ws.binaryType = "arraybuffer";
-      ws.onopen = () => { $("conn").textContent = "connected"; sendFrame(); };
+      ws.onopen = () => { $("conn").textContent = "connected"; startMode(); sendFrame(); };
       ws.onmessage = (ev) => { render(JSON.parse(ev.data)); if (camOn) sendFrame(); };
       ws.onclose = () => $("conn").textContent = "disconnected";
       ws.onerror = () => $("conn").textContent = "error";
@@ -183,7 +194,7 @@
     async function startCam() {
       try { await startStream(); } catch (e) { $("conn").textContent = "camera error: " + e.message; return; }
       camOn = true; $("camBtn").textContent = "Stop camera"; $("camBtn").className = "stop";
-      $("setBtn").disabled = false; connect();
+      $("setBtn").disabled = false; beep(660, 0.001); connect();
     }
     function stopCam() {
       camOn = false; $("camBtn").textContent = "Start camera"; $("camBtn").className = "go";
@@ -192,11 +203,9 @@
       $("conn").textContent = "idle";
     }
 
-    // ---- rendering ----
+    // ---- shared render ----
     function pt(kp, n) { const k = kp[n]; return k && k.c >= CONF ? [k.x * overlay.width, k.y * overlay.height] : null; }
-    function render(d) {
-      if (d.error) { $("state").textContent = "ERROR"; $("note").textContent = d.error; return; }
-      if (d.reset) return;
+    function drawOverlay(d) {
       const kp = d.keypoints || {};
       const ks = [pt(kp, "left_knee"), pt(kp, "right_knee")].filter(Boolean).map(p => p[1]);
       if (ks.length) { const ky = Math.min(...ks); octx.strokeStyle = "#22d3ee"; octx.lineWidth = 2;
@@ -206,42 +215,62 @@
         if (pa && pb) { octx.beginPath(); octx.moveTo(pa[0], pa[1]); octx.lineTo(pb[0], pb[1]); octx.stroke(); } }
       octx.fillStyle = "#38bdf8";
       for (const n in kp) { const p = pt(kp, n); if (p) { octx.beginPath(); octx.arc(p[0], p[1], 5, 0, 7); octx.fill(); } }
-
-      $("state").textContent = d.state;
-      $("note").textContent = d.note || "";
+    }
+    function render(d) {
+      if (d.error) { $("state").textContent = "ERROR"; $("note").textContent = d.error; return; }
+      if (d.reset) return;
+      drawOverlay(d);
+      $("state").textContent = d.state; $("note").textContent = d.note || "";
       setLight(d.below_parallel);
-      const fill = $("fill");
-      fill.style.width = Math.min(1, d.descent_fraction || 0) * 100 + "%";
+      const fill = $("fill"); fill.style.width = Math.min(1, d.descent_fraction || 0) * 100 + "%";
       fill.className = d.below_parallel === true ? "good" : d.below_parallel === false ? "bad" : "";
-
-      if (d.rep_completed && d.last_verdict && currentSet) addRep(d.last_verdict);
+      if (mode === "training") { if (d.rep_completed && d.last_verdict && currentSet) addRep(d.last_verdict); }
+      else handleComp(d);
     }
     function setLight(b) { $("light").className = "light" + (b === true ? " good" : b === false ? " bad" : ""); }
-    function flash(good) { const f = $("flash"); f.className = good ? "good" : "bad";
-      setTimeout(() => (f.className = ""), 350); }
+    function flash(good) { const f = $("flash"); f.className = good ? "good" : "bad"; setTimeout(() => (f.className = ""), 350); }
 
-    // ---- sets ----
+    // ---- competition mode ----
+    function showCmd(text, color) { const el = $("compCmd"); el.textContent = text; el.style.color = color || "var(--good)";
+      el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); }
+    function handleComp(d) {
+      if (d.command === "SQUAT") { showCmd("SQUAT!"); beep(880, 0.18); }
+      else if (d.command === "RACK") { showCmd("RACK", "var(--warn)"); beep(440, 0.2); }
+      $("compNote").textContent = d.note || "";
+      if (d.rep_completed && d.last_verdict) {
+        const v = d.last_verdict;
+        const f = v.faults.length ? `<span class="faults"> — ${v.faults.join(", ")}</span>` : "";
+        $("compVerdict").innerHTML = `<span class="${v.verdict}">${v.verdict}</span>${f}`;
+        flash(v.verdict === "GOOD");
+        logAttempt(v);
+        $("newAttempt").style.display = "";
+      }
+    }
+    function logAttempt(v) {
+      const w = $("compWeight").value;
+      history.unshift({ id: Date.now(), mode: "competition", at: new Date().toISOString(),
+        weight: w === "" ? null : Number(w), unit, verdict: v.verdict, faults: v.faults });
+      save(HKEY, history); renderHistory();
+    }
+
+    // ---- training sets ----
     function startSet() {
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ cmd: "reset" }));
       const w = $("weight").value; savePrefs();
       currentSet = { id: Date.now(), mode: "training", weight: w === "" ? null : Number(w), unit,
         startedAt: new Date().toISOString(), reps: [] };
-      $("setBtn").textContent = "Complete set"; $("setBtn").className = "stop";
-      renderReps();
+      $("setBtn").textContent = "Complete set"; $("setBtn").className = "stop"; renderReps();
     }
     function completeSet() {
       if (!currentSet) return;
       currentSet.endedAt = new Date().toISOString();
       if (currentSet.reps.length) { history.unshift(currentSet); save(HKEY, history); renderHistory(); }
-      currentSet = null;
-      $("setBtn").textContent = "Start set"; $("setBtn").className = "go";
-      renderReps();
+      currentSet = null; $("setBtn").textContent = "Start set"; $("setBtn").className = "go"; renderReps();
     }
     function addRep(v) {
-      currentSet.reps.push({ n: currentSet.reps.length + 1, verdict: v.verdict,
-        faults: v.faults, depth_margin: v.depth_margin, duration_s: v.duration_s });
-      flash(v.verdict === "GOOD");
-      renderReps();
+      currentSet.reps.push({ n: currentSet.reps.length + 1, verdict: v.verdict, faults: v.faults,
+        depth_margin: v.depth_margin, duration_s: v.duration_s });
+      flash(v.verdict === "GOOD"); renderReps();
     }
     const emoji = (v) => v === "GOOD" ? "✅" : v === "NO_LIFT" ? "❌" : "❔";
     function repLi(r) {
@@ -250,11 +279,9 @@
       return `<li>${emoji(r.verdict)} <span>Rep ${r.n}</span> <span class="rv ${r.verdict}">${r.verdict}</span> ${f} ${meta}</li>`;
     }
     function summarize(reps) {
-      const g = reps.filter(r => r.verdict === "GOOD").length;
-      const nl = reps.filter(r => r.verdict === "NO_LIFT").length;
+      const g = reps.filter(r => r.verdict === "GOOD").length, nl = reps.filter(r => r.verdict === "NO_LIFT").length;
       const parts = [`${reps.length} rep${reps.length === 1 ? "" : "s"}`];
-      if (g) parts.push(`${g} good`); if (nl) parts.push(`${nl} no-lift`);
-      return parts.join(" · ");
+      if (g) parts.push(`${g} good`); if (nl) parts.push(`${nl} no-lift`); return parts.join(" · ");
     }
     function renderReps() {
       if (!currentSet) { $("repList").innerHTML = ""; $("summary").textContent = camOn ? "Start a set to log reps." : ""; return; }
@@ -268,14 +295,36 @@
       const t = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
       return d.toDateString() === now.toDateString() ? t : d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " + t;
     }
+    function wLabel(s) { return s.weight != null ? `<span class="w">${s.weight} ${s.unit}</span>` : `<span class="muted">no weight</span>`; }
     function renderHistory() {
       if (!history.length) { $("histList").innerHTML = `<div class="empty">No sets yet.</div>`; return; }
       $("histList").innerHTML = history.map(s => {
-        const w = s.weight != null ? `<span class="w">${s.weight} ${s.unit}</span>` : `<span class="muted">no weight</span>`;
-        return `<details class="set"><summary><span class="muted">${fmtTime(s.startedAt)}</span> ${w}
-          <span>${summarize(s.reps)}</span></summary>
-          <ul class="reps">${s.reps.map(repLi).join("")}</ul></details>`;
+        if (s.mode === "competition") {
+          const f = s.faults && s.faults.length ? ` <span class="faults">${s.faults.join(", ")}</span>` : "";
+          return `<details class="set"><summary><span class="muted">${fmtTime(s.at)}</span> 🏆 ${wLabel(s)}
+            <span class="rv ${s.verdict}">${s.verdict}</span>${f}</summary>
+            <div class="muted">Competition attempt.</div></details>`;
+        }
+        return `<details class="set"><summary><span class="muted">${fmtTime(s.startedAt)}</span> ${wLabel(s)}
+          <span>${summarize(s.reps)}</span></summary><ul class="reps">${s.reps.map(repLi).join("")}</ul></details>`;
       }).join("");
+    }
+
+    // ---- mode ----
+    function startMode() {
+      if (!ws || ws.readyState !== 1) return;
+      ws.send(JSON.stringify({ cmd: "start", mode }));
+      if (mode === "competition") { $("compVerdict").innerHTML = ""; $("newAttempt").style.display = "none"; showCmd("—", "#888"); }
+    }
+    function setMode(m) {
+      if (m === mode) return;
+      if (currentSet) completeSet();
+      mode = m;
+      $("mode-training").className = m === "training" ? "on" : "";
+      $("mode-comp").className = m === "competition" ? "on" : "";
+      $("trainCard").style.display = m === "training" ? "" : "none";
+      $("compCard").style.display = m === "competition" ? "" : "none";
+      startMode();
     }
 
     // ---- wiring ----
@@ -285,17 +334,17 @@
     $("camBtn").onclick = () => (camOn ? stopCam() : startCam());
     camSel.onchange = () => { if (camOn) startStream(); };
     $("setBtn").onclick = () => (currentSet ? completeSet() : startSet());
+    $("mode-training").onclick = () => setMode("training");
+    $("mode-comp").onclick = () => setMode("competition");
+    $("newAttempt").onclick = () => startMode();
     $("exportBtn").onclick = () => {
       const blob = new Blob([JSON.stringify(history, null, 2)], { type: "application/json" });
       const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
       a.download = `white-lights-history-${new Date().toISOString().slice(0, 10)}.json`; a.click();
     };
     $("importBtn").onclick = () => $("importFile").click();
-    $("importFile").onchange = (e) => {
-      const file = e.target.files[0]; if (!file) return;
-      file.text().then(t => { try { const data = JSON.parse(t);
-        if (Array.isArray(data)) { history = data; save(HKEY, history); renderHistory(); } } catch { alert("Invalid JSON"); } });
-    };
+    $("importFile").onchange = (e) => { const file = e.target.files[0]; if (!file) return;
+      file.text().then(t => { try { const data = JSON.parse(t); if (Array.isArray(data)) { history = data; save(HKEY, history); renderHistory(); } } catch { alert("Invalid JSON"); } }); };
     $("clearBtn").onclick = () => { if (confirm("Clear all history?")) { history = []; save(HKEY, history); renderHistory(); } };
 
     navigator.mediaDevices?.enumerateDevices && listCams();
