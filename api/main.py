@@ -56,37 +56,29 @@ def live_page() -> FileResponse:
 
 
 def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height: int) -> dict:
-    """Build the per-frame JSON the browser renders.
+    """Build the per-frame JSON the browser renders (see web/live.html + HANDOFF.md).
 
-    Keypoints are normalised to [0, 1] against the processed frame size so the
-    client can scale them to any canvas dimensions.
+    Keypoints are a list of ``{name, x, y, confidence}`` normalised to [0, 1]
+    against the processed frame size so the client can scale them to any canvas.
+    ``verdict`` is only populated on the frame a rep completes.
     """
     w = width or 1
     h = height or 1
-    keypoints = {
-        name: {"x": kp.x / w, "y": kp.y / h, "c": kp.confidence}
+    keypoints = [
+        {"name": name, "x": kp.x / w, "y": kp.y / h, "confidence": kp.confidence}
         for name, kp in frame2d.keypoints.items()
-    }
+    ]
     verdict = None
-    if status.last_verdict is not None:
-        v = status.last_verdict
-        verdict = {
-            "verdict": v.verdict.value,
-            "faults": [f.value for f in v.faults],
-            "rep_index": v.rep_index,
-            "depth_margin": v.depth_margin,
-            "duration_s": round(v.end_time_s - v.start_time_s, 2),
-        }
+    if status.rep_completed and status.last_verdict is not None:
+        verdict = status.last_verdict.model_dump(mode="json")
     return {
-        "keypoints": keypoints,
-        "state": status.state.value,
-        "note": status.note,
+        "state": str(status.state),
         "below_parallel": status.below_parallel,
-        "descent_fraction": status.descent_fraction,
-        "rep_count": status.rep_count,
+        "depth_progress": max(0.0, min(1.0, status.descent_fraction or 0.0)),
         "rep_completed": status.rep_completed,
-        "command": status.command,
-        "last_verdict": verdict,
+        "verdict": verdict,
+        "note": status.note,
+        "keypoints": keypoints or None,
     }
 
 
