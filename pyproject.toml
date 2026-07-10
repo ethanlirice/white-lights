@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "white-lights"
+version = "2.0.0.dev0"
+description = "Real-time computer-vision squat-depth judge for powerlifting."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Ethan" }]
+
+# Core deps kept intentionally light so `pip install -e .` and CI stay fast.
+# The heavy ML / serving stacks live in extras (see below) and are only needed
+# to actually run the pose model or the API.
+dependencies = [
+    "pydantic>=2.6",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+# Pose runtime: YOLO11-pose + video decoding. Pulls torch, so kept separate.
+cv = [
+    "ultralytics>=8.3",
+    "opencv-python>=4.8",
+]
+# HTTP surface.
+api = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+]
+# Test + lint. httpx powers FastAPI's TestClient.
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+    "httpx>=0.27",
+]
+
+[tool.setuptools]
+packages = ["whitelights", "api", "eval"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+# Import the package from the source tree, independent of the editable install
+# (whose generated finder is fragile on paths containing spaces).
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastAPI's `= File(...)` / `= Depends(...)` defaults trip B008 by design.
+"api/*" = ["B008"]

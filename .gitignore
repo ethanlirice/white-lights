@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test / tooling
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Models (auto-downloaded by ultralytics on first run)
+*.pt
+
+# Uploaded / working media
+*.mp4
+*.mov
+*.avi
+!tests/**/*.mp4
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/

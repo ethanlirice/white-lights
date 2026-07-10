@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>White Lights — Squat Depth Judge</title>
+  <style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      max-width: 640px; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.5;
+    }
+    h1 { margin-bottom: .25rem; }
+    .sub { opacity: .7; margin-top: 0; }
+    form {
+      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      border-radius: 12px; padding: 1.25rem; margin-top: 1.5rem;
+    }
+    label { display: block; font-weight: 600; margin-bottom: .4rem; }
+    input[type=file], textarea {
+      width: 100%; padding: .6rem; border-radius: 8px;
+      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+      background: transparent; color: inherit; font: inherit;
+    }
+    textarea { margin-bottom: 1rem; min-height: 3.5rem; font-family: ui-monospace, monospace; }
+    .hint { font-weight: 400; opacity: .65; font-size: .85rem; }
+    button {
+      margin-top: 1rem; padding: .6rem 1.2rem; border-radius: 8px; border: 0;
+      background: #2563eb; color: #fff; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: progress; }
+    pre {
+      background: color-mix(in srgb, currentColor 8%, transparent);
+      padding: 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .verdict { font-weight: 700; }
+    .GOOD { color: #16a34a; } .NO_LIFT { color: #dc2626; } .UNCERTAIN { color: #d97706; }
+    #status { margin-top: 1rem; min-height: 1.5rem; }
+  </style>
+</head>
+<body>
+  <h1>White Lights</h1>
+  <p class="sub">Computer-vision squat-depth judge · v2 (rebuild in progress)</p>
+
+  <form id="judge-form">
+    <label for="files">Squat video(s)
+      <span class="hint">— one file, or one per camera view</span>
+    </label>
+    <input id="files" name="files" type="file" accept="video/*" multiple required />
+
+    <label for="commands" style="margin-top:1rem">Referee commands
+      <span class="hint">— optional JSON</span>
+    </label>
+    <textarea id="commands" name="commands"
+      placeholder='[{"command":"START","time_s":2.5},{"command":"RACK","time_s":6.0}]'></textarea>
+
+    <button id="submit" type="submit">Judge</button>
+  </form>
+
+  <div id="status"></div>
+  <div id="results"></div>
+
+  <script>
+    const form = document.getElementById("judge-form");
+    const statusEl = document.getElementById("status");
+    const resultsEl = document.getElementById("results");
+    const submitBtn = document.getElementById("submit");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      resultsEl.innerHTML = "";
+      statusEl.textContent = "Uploading and judging…";
+      submitBtn.disabled = true;
+
+      const data = new FormData();
+      for (const f of document.getElementById("files").files) data.append("files", f);
+      const cmds = document.getElementById("commands").value.trim();
+      if (cmds) data.append("commands", cmds);
+
+      try {
+        const res = await fetch("/judge", { method: "POST", body: data });
+        const body = await res.json();
+        if (!res.ok) {
+          const msg = body?.detail?.message || body?.detail || JSON.stringify(body);
+          statusEl.textContent = `⚠️ ${res.status}: ${msg}`;
+          return;
+        }
+        statusEl.textContent = `Done in ${body.processing_ms?.toFixed(0)} ms · ${body.reps.length} rep(s)`;
+        renderResults(body);
+      } catch (err) {
+        statusEl.textContent = `Request failed: ${err}`;
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+
+    function renderResults(body) {
+      if (!body.reps?.length) return;
+      const rows = body.reps.map((r) =>
+        `<li>Rep ${r.rep_index + 1}: ` +
+        `<span class="verdict ${r.verdict}">${r.verdict}</span> ` +
+        `(conf ${r.confidence?.toFixed(2)})` +
+        (r.faults?.length ? ` — ${r.faults.join(", ")}` : "")
+      ).join("");
+      resultsEl.innerHTML = `<ul>${rows}</ul><pre>${JSON.stringify(body, null, 2)}</pre>`;
+    }
+  </script>
+</body>
+</html>
