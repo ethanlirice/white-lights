@@ -151,6 +151,12 @@ def make_depth():
 
 
 @pytest.fixture
+def make_squat():
+    """Return the `make_squat_3d` builder (build a trace from a hip-z series)."""
+    return make_squat_3d
+
+
+@pytest.fixture
 def make_full_squat():
     """Return a builder for a full-keypoint (with ankles) good-depth squat.
 
