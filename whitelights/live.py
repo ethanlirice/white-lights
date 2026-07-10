@@ -38,12 +38,13 @@ import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .depth import DepthConfig, DepthFrameResult, judge_depth_frame
 from .filters import StreamingKeypointSmoother
 from .fusion import reconstruct_3d
 from .pose import DEFAULT_MODEL, PoseEstimator, result_to_frame
+from .posture import PostureConfig, is_locked_out
 from .types import Fault, FrameKeypoints, FrameKeypoints3D, PoseSequence, RepVerdict, Verdict
 
 _HIP = ("left_hip", "right_hip")
@@ -85,6 +86,7 @@ class LiveStatus:
     rep_count: int
     last_verdict: RepVerdict | None
     rep_completed: bool
+    command: str | None = None  # "SQUAT"/"RACK" on the frame it is issued (competition mode)
 
 
 @dataclass
@@ -109,6 +111,9 @@ class OnlineRepTracker:
 
     def __init__(self, config: LiveConfig | None = None) -> None:
         self.config = config or LiveConfig()
+        self.reset()
+
+    def reset(self) -> None:
         self.state = LiveState.STANDING
         self._standing_hip: float | None = None
         self._standing_thigh: float | None = None
@@ -292,6 +297,268 @@ class OnlineRepTracker:
         )
 
 
+# ---------------------------------------------------------------------------
+# Competition mode: the computer plays referee
+# ---------------------------------------------------------------------------
+
+
+def _hip_z_of(frame: FrameKeypoints3D, min_conf: float) -> float | None:
+    zs = [
+        kp.z for name in _HIP if (kp := frame.get(name)) is not None and kp.confidence >= min_conf
+    ]
+    return sum(zs) / len(zs) if zs else None
+
+
+def _thigh_of(frame: FrameKeypoints3D, min_conf: float) -> float | None:
+    lengths: list[float] = []
+    for side in _SIDES:
+        hip = frame.get(f"{side}_hip")
+        knee = frame.get(f"{side}_knee")
+        if hip is None or knee is None or min(hip.confidence, knee.confidence) < min_conf:
+            continue
+        lengths.append(math.dist((hip.x, hip.y, hip.z), (knee.x, knee.y, knee.z)))
+    return sum(lengths) / len(lengths) if lengths else None
+
+
+class CompState(StrEnum):
+    AWAIT_SETUP = "AWAIT_SETUP"  # waiting for a still, locked setup -> SQUAT
+    SET = "SET"  # SQUAT given, waiting for the descent
+    DESCENDING = "DESCENDING"
+    ASCENDING = "ASCENDING"
+    AWAIT_LOCKOUT = "AWAIT_LOCKOUT"  # waiting for a still, locked finish -> RACK
+    DONE = "DONE"
+
+
+class CompetitionConfig(BaseModel):
+    """Thresholds for the competition (referee-command) judge."""
+
+    min_confidence: float = 0.5
+    enter_fraction: float = 0.30
+    exit_fraction: float = 0.15
+    bottom_rise_fraction: float = 0.05
+    downward_movement_fraction: float = 0.05
+    still_velocity_fraction: float = 0.40  # |hip velocity| (per s) below this == still
+    setup_hold_s: float = 0.60  # still + locked hold before SQUAT
+    lockout_hold_s: float = 0.60  # still hold at the top before RACK
+    max_lockout_wait_s: float = 6.0  # give RACK anyway after this long at the top
+    posture: PostureConfig = Field(default_factory=PostureConfig)
+
+
+class CompetitionTracker:
+    """Online single-attempt judge that issues its own SQUAT/RACK commands.
+
+    Reuses the same signals as training (hip height, thigh scale, per-frame
+    depth) plus ``posture.is_locked_out`` and hip-velocity stillness to decide
+    when to command. Emits one verdict per attempt with the full fault set:
+    INSUFFICIENT_DEPTH, DOWNWARD_MOVEMENT, EARLY_DESCENT (moved before SQUAT),
+    EARLY_RACK (left the lockout before RACK) and INCOMPLETE_LOCKOUT.
+    """
+
+    def __init__(self, config: CompetitionConfig | None = None) -> None:
+        self.config = config or CompetitionConfig()
+        self.reset()
+
+    def reset(self) -> None:
+        self.state = CompState.AWAIT_SETUP
+        self._standing_hip: float | None = None
+        self._standing_thigh: float | None = None
+        self._prev_hip: float | None = None
+        self._prev_time: float | None = None
+        self._hold_start: float | None = None  # when the current ready-hold began
+        self._lockout_entered: float | None = None
+        self._rep_count = 0
+        self._last_verdict: RepVerdict | None = None
+        self._cand = _Candidate()
+        self._early_descent = False
+        self._early_rack = False
+        self._incomplete_lockout = False
+
+    def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
+        c = self.config
+        hip = _hip_z_of(frame, c.min_confidence)
+        thigh = _thigh_of(frame, c.min_confidence)
+        below = None if depth.gated else depth.is_below_parallel
+        margin = None if depth.gated else depth.depth_margin
+
+        if self.state == CompState.DONE:
+            return self._status(below, margin, hip, "attempt complete", scale=self._standing_thigh)
+        if hip is None or thigh is None or thigh <= 0:
+            self._hold_start = None
+            return self._status(below, margin, hip, "waiting for a clear view of hips + knees")
+
+        if self._standing_hip is None:
+            self._standing_hip, self._standing_thigh = hip, thigh
+        dt = frame.time_s - self._prev_time if self._prev_time is not None else None
+        vel = (hip - self._prev_hip) / dt if (dt and dt > 0 and self._prev_hip is not None) else 0.0
+        self._prev_hip, self._prev_time = hip, frame.time_s
+
+        scale = self._standing_thigh or thigh
+        still = abs(vel) < c.still_velocity_fraction * scale
+        locked = is_locked_out(frame, c.posture)  # True / False / None
+        t = frame.time_s
+        cmd = None
+        note = ""
+
+        if self.state == CompState.AWAIT_SETUP:
+            if still:
+                self._standing_hip = hip
+                self._standing_thigh = thigh
+            if hip < self._standing_hip - c.enter_fraction * scale and vel < 0:
+                self._early_descent = True  # descended before the SQUAT command
+                self._begin(frame, hip)
+                self.state = CompState.DESCENDING
+                note = "moved before the command!"
+            elif self._held(t, still and locked is not False, c.setup_hold_s):
+                cmd = "SQUAT"
+                self.state = CompState.SET
+                note = "SQUAT — begin your lift"
+            elif still and locked is False:
+                note = "stand tall and lock your knees"
+            else:
+                note = "set up: stand still and locked to get the command"
+        elif self.state == CompState.SET:
+            if hip < self._standing_hip - c.enter_fraction * scale and vel < 0:
+                self._begin(frame, hip)
+                self.state = CompState.DESCENDING
+                note = "descending…"
+            else:
+                note = "SQUAT — begin your lift"
+        elif self.state == CompState.DESCENDING:
+            self._accumulate(depth, hip)
+            if hip > self._cand.min_hip + c.bottom_rise_fraction * scale:
+                self.state = CompState.ASCENDING
+                self._cand.ascent_peak = hip
+                note = "stand it up…"
+            else:
+                note = f"descending… depth {self._frac(hip, scale) * 100:.0f}%"
+        elif self.state == CompState.ASCENDING:
+            self._accumulate(depth, hip)
+            if hip < self._cand.ascent_peak - c.downward_movement_fraction * scale:
+                self._cand.downward = True
+            self._cand.ascent_peak = max(self._cand.ascent_peak, hip)
+            if hip >= self._standing_hip - c.exit_fraction * scale:
+                self.state = CompState.AWAIT_LOCKOUT
+                self._lockout_entered = t
+                self._hold_start = None
+                note = "hold it — wait for the rack command"
+            else:
+                note = "stand it up…"
+        elif self.state == CompState.AWAIT_LOCKOUT:
+            waited = t - (self._lockout_entered or t)
+            if hip < self._standing_hip - c.enter_fraction * scale:
+                self._early_rack = True  # broke lockout / re-descended before RACK
+                cmd = "RACK"
+                note = self._finalize(frame, "left lockout before the rack command!")
+            elif self._held(t, still, c.lockout_hold_s) or waited > c.max_lockout_wait_s:
+                if locked is False:
+                    self._incomplete_lockout = True
+                cmd = "RACK"
+                note = self._finalize(frame, "RACK")
+            else:
+                note = "hold it — wait for the rack command"
+
+        return self._status(
+            below,
+            margin,
+            hip,
+            note,
+            command=cmd,
+            completed=(self.state == CompState.DONE and cmd == "RACK"),
+            scale=scale,
+        )
+
+    # -- helpers -------------------------------------------------------------
+
+    def _held(self, t: float, condition: bool, hold_s: float) -> bool:
+        """True once ``condition`` has held continuously for ``hold_s`` seconds."""
+        if not condition:
+            self._hold_start = None
+            return False
+        if self._hold_start is None:
+            self._hold_start = t
+        return (t - self._hold_start) >= hold_s
+
+    def _begin(self, frame: FrameKeypoints3D, hip: float) -> None:
+        self._cand = _Candidate(start_frame=frame.frame_idx, start_time=frame.time_s, min_hip=hip)
+
+    def _accumulate(self, depth: DepthFrameResult, hip: float) -> None:
+        self._cand.min_hip = min(self._cand.min_hip, hip)
+        if not depth.gated and depth.depth_margin is not None:
+            self._cand.had_confident = True
+            if depth.is_below_parallel:
+                self._cand.reached_below = True
+            if self._cand.best_margin is None or depth.depth_margin > self._cand.best_margin:
+                self._cand.best_margin = depth.depth_margin
+                self._cand.best_conf = depth.confidence
+
+    def _finalize(self, frame: FrameKeypoints3D, note: str) -> str:
+        cand = self._cand
+        faults: list[Fault] = []
+        if self._early_descent:
+            faults.append(Fault.EARLY_DESCENT)
+        if self._incomplete_lockout:
+            faults.append(Fault.INCOMPLETE_LOCKOUT)
+        if cand.had_confident and not cand.reached_below:
+            faults.append(Fault.INSUFFICIENT_DEPTH)
+        if cand.downward:
+            faults.append(Fault.DOWNWARD_MOVEMENT)
+        if self._early_rack:
+            faults.append(Fault.EARLY_RACK)
+
+        if faults:
+            verdict = Verdict.NO_LIFT
+        elif not cand.had_confident:
+            verdict = Verdict.UNCERTAIN
+        else:
+            verdict = Verdict.GOOD
+
+        self._last_verdict = RepVerdict(
+            rep_index=self._rep_count,
+            verdict=verdict,
+            confidence=cand.best_conf,
+            faults=faults,
+            depth_margin=cand.best_margin,
+            start_frame=cand.start_frame,
+            end_frame=frame.frame_idx,
+            start_time_s=cand.start_time,
+            end_time_s=frame.time_s,
+        )
+        self._rep_count += 1
+        self.state = CompState.DONE
+        return note
+
+    def _frac(self, hip: float, scale: float) -> float:
+        if self._standing_hip is None or scale <= 0:
+            return 0.0
+        return max(0.0, (self._standing_hip - hip) / scale)
+
+    def _status(
+        self,
+        below: bool | None,
+        margin: float | None,
+        hip: float | None,
+        note: str,
+        *,
+        command: str | None = None,
+        completed: bool = False,
+        scale: float | None = None,
+    ) -> LiveStatus:
+        frac = self._frac(hip, scale) if (hip is not None and scale) else None
+        return LiveStatus(
+            state=self.state,
+            note=note,
+            below_parallel=below,
+            depth_margin=margin,
+            hip_z=hip,
+            standing_ref=self._standing_hip,
+            descent_fraction=frac,
+            rep_count=self._rep_count,
+            last_verdict=self._last_verdict,
+            rep_completed=completed,
+            command=command,
+        )
+
+
 def lift_frame_to_3d(frame2d: FrameKeypoints, *, fps: float, camera_id: str = "cam0"):
     """Single-view 2D->3D lift for one frame (reuses the fusion fallback)."""
     seq = PoseSequence(camera_id=camera_id, fps=fps, frames=[frame2d])
@@ -307,23 +574,29 @@ class LiveJudge:
         *,
         fps: float = 30.0,
         depth_config: DepthConfig | None = None,
+        tracker: OnlineRepTracker | CompetitionTracker | None = None,
         live_config: LiveConfig | None = None,
     ) -> None:
         self.estimator = estimator or PoseEstimator()
         self.fps = fps
         self.depth_config = depth_config or DepthConfig()
-        self._live_config = live_config
-        self.tracker = OnlineRepTracker(live_config)
-        self.smoother = StreamingKeypointSmoother(min_confidence=self.tracker.config.min_confidence)
+        self.tracker = tracker or OnlineRepTracker(live_config)
+        self.smoother = StreamingKeypointSmoother(min_confidence=self._min_conf())
+        self._frame_idx = 0
+
+    def _min_conf(self) -> float:
+        return getattr(self.tracker.config, "min_confidence", 0.5)
+
+    def set_tracker(self, tracker) -> None:
+        """Swap the rep/competition tracker (mode switch), keeping the model warm."""
+        self.tracker = tracker
+        self.smoother = StreamingKeypointSmoother(min_confidence=self._min_conf())
         self._frame_idx = 0
 
     def reset(self) -> None:
-        """Start fresh: new rep numbering and a re-learned standing reference.
-
-        Used at the start of a set / attempt so counts and the baseline restart.
-        """
-        self.tracker = OnlineRepTracker(self._live_config)
-        self.smoother = StreamingKeypointSmoother(min_confidence=self.tracker.config.min_confidence)
+        """Start fresh: new rep/attempt numbering and a re-learned standing ref."""
+        self.tracker.reset()
+        self.smoother = StreamingKeypointSmoother(min_confidence=self._min_conf())
         self._frame_idx = 0
 
     def process_frame(self, bgr_frame) -> tuple[FrameKeypoints, DepthFrameResult, LiveStatus]:

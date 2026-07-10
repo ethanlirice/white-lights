@@ -85,6 +85,7 @@ def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height
         "descent_fraction": status.descent_fraction,
         "rep_count": status.rep_count,
         "rep_completed": status.rep_completed,
+        "command": status.command,
         "last_verdict": verdict,
     }
 
@@ -142,12 +143,22 @@ async def ws_live(ws: WebSocket) -> None:
 
 
 def _handle_control(judge: LiveJudge, text: str) -> None:
-    """Apply a client control message. Currently: reset (start a new set)."""
+    """Apply a client control message: reset a set, or switch mode (training vs
+    competition) at the start of a set / attempt."""
     try:
         cmd = json.loads(text)
     except json.JSONDecodeError:
         return
-    if cmd.get("cmd") == "reset":
+    if cmd.get("cmd") not in ("reset", "start"):
+        return
+    from whitelights.live import CompetitionTracker, OnlineRepTracker
+
+    mode = cmd.get("mode")
+    if mode == "competition":
+        judge.set_tracker(CompetitionTracker())
+    elif mode == "training":
+        judge.set_tracker(OnlineRepTracker())
+    else:
         judge.reset()
 
 
