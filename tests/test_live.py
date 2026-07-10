@@ -66,6 +66,23 @@ def test_standing_still_produces_no_reps(good_squat_3d, make_depth) -> None:
         status = tracker.update(frame, depth)
     assert status.rep_count == 0
     assert status.state == LiveState.STANDING
+    assert "standing" in status.note.lower()  # reasoning is surfaced
+
+
+def test_shallow_bob_is_not_counted(make_squat, make_depth) -> None:
+    # A dip that crosses the start threshold but isn't deep enough for a rep.
+    poses = make_squat([1.0] * 5 + [0.80] * 3 + [1.0] * 8)
+    tracker = OnlineRepTracker()
+    statuses = _drive(tracker, poses, make_depth(poses))
+    assert statuses[-1].rep_count == 0  # debounced away
+
+
+def test_single_frame_glitch_is_not_counted(make_squat, make_depth) -> None:
+    # A one-frame detection spike is deep but too short in duration to count.
+    poses = make_squat([1.0] * 10 + [0.40] + [1.0] * 10)
+    tracker = OnlineRepTracker()
+    statuses = _drive(tracker, poses, make_depth(poses))
+    assert statuses[-1].rep_count == 0
 
 
 def test_lift_frame_to_3d_matches_convention() -> None:
