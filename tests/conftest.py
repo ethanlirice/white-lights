@@ -11,6 +11,8 @@ Vertical convention matches `types` 3D: +z is up. A hip below the knee (small
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pytest
 
@@ -160,6 +162,48 @@ def make_squat():
 def make_full_squat_from_series():
     """Return the full-keypoint (with ankles) builder taking an explicit hip series."""
     return make_full_squat_3d
+
+
+def make_bench_3d(
+    wrist_z_series: list[float],
+    *,
+    fps: float = FPS,
+    shoulder_z: float = 1.0,
+    seg: float = 0.3,
+    confidence: float = 0.95,
+) -> Pose3DSequence:
+    """Bench-press trace: shoulders fixed, wrists (the bar) follow ``wrist_z_series``.
+
+    The elbow is placed so both arm segments stay length ``seg`` — so the
+    shoulder-elbow-wrist angle is ~180 deg when the wrist is fully extended
+    (wrist_z = shoulder_z + 2*seg) and bends as the bar lowers to the chest.
+    """
+    frames: list[FrameKeypoints3D] = []
+    for i, wz in enumerate(wrist_z_series):
+        d = abs(wz - shoulder_z)
+        ex = math.sqrt(max(0.0, seg * seg - (d / 2) ** 2))  # elbow lateral offset
+        ez = (shoulder_z + wz) / 2
+        kps: dict[str, Keypoint3D] = {}
+        for side, sx in (("left", -0.15), ("right", 0.15)):
+            kps[f"{side}_shoulder"] = Keypoint3D(
+                name=f"{side}_shoulder", x=sx, y=0.0, z=shoulder_z, confidence=confidence
+            )
+            kps[f"{side}_elbow"] = Keypoint3D(
+                name=f"{side}_elbow", x=sx + ex, y=0.0, z=ez, confidence=confidence
+            )
+            kps[f"{side}_wrist"] = Keypoint3D(
+                name=f"{side}_wrist", x=sx, y=0.0, z=wz, confidence=confidence
+            )
+        frames.append(
+            FrameKeypoints3D(frame_idx=i, time_s=i / fps, keypoints=kps, confidence=confidence)
+        )
+    return Pose3DSequence(fps=fps, frames=frames, camera_ids=["cam0"])
+
+
+@pytest.fixture
+def make_bench_from_series():
+    """Return the bench-press trace builder taking an explicit wrist-z series."""
+    return make_bench_3d
 
 
 @pytest.fixture

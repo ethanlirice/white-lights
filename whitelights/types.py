@@ -160,11 +160,14 @@ class Fault(StrEnum):
 
     INSUFFICIENT_DEPTH = "INSUFFICIENT_DEPTH"  # hip crease never broke below top of knee
     DOWNWARD_MOVEMENT = "DOWNWARD_MOVEMENT"  # re-descent / double-bounce on the ascent
-    EARLY_DESCENT = "EARLY_DESCENT"  # began descending before the "Squat!" command
+    EARLY_DESCENT = "EARLY_DESCENT"  # began descending/lowering before the start command
     EARLY_RACK = "EARLY_RACK"  # racked before the "Rack!" command
-    INCOMPLETE_LOCKOUT = "INCOMPLETE_LOCKOUT"  # not erect / knees not locked at start or finish
+    INCOMPLETE_LOCKOUT = "INCOMPLETE_LOCKOUT"  # knees/elbows not locked at start or finish
     FOOT_MOVEMENT = "FOOT_MOVEMENT"  # stepped or shifted feet before "Rack!"
     BAR_SUPPORTED_ON_THIGHS = "BAR_SUPPORTED_ON_THIGHS"
+    # Bench press
+    EARLY_PRESS = "EARLY_PRESS"  # pressed off the chest before the "Press!" command
+    BAR_NOT_TO_CHEST = "BAR_NOT_TO_CHEST"  # bar not lowered to the chest
 
 
 class RepVerdict(BaseModel):
