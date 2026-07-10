@@ -23,6 +23,10 @@ htmlcov/
 *.avi
 !tests/**/*.mp4
 
+# Validation data (keep the example + README, ignore real labels/clips)
+data/labels.csv
+data/clips/
+
 # Editor / OS
 .DS_Store
 .idea/
