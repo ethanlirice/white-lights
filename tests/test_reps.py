@@ -70,12 +70,18 @@ def test_all_gated_depth_is_uncertain(good_squat_3d) -> None:
     assert verdicts[0].depth_margin is None
 
 
-@pytest.mark.xfail(strict=True, reason="v2.1: downward-movement detection not implemented")
 def test_double_bounce_flags_downward_movement(double_bounce_3d, make_depth) -> None:
     verdicts = segment_reps(double_bounce_3d, make_depth(double_bounce_3d))
     assert len(verdicts) == 1
     assert Fault.DOWNWARD_MOVEMENT in verdicts[0].faults
     assert verdicts[0].verdict == Verdict.NO_LIFT
+
+
+def test_clean_squat_has_no_downward_movement(good_squat_3d, make_depth) -> None:
+    # A monotonic ascent must not be mistaken for a bounce.
+    verdicts = segment_reps(good_squat_3d, make_depth(good_squat_3d))
+    assert Fault.DOWNWARD_MOVEMENT not in verdicts[0].faults
+    assert verdicts[0].verdict == Verdict.GOOD
 
 
 @pytest.mark.xfail(strict=True, reason="v2.2: command-timing faults not implemented")
