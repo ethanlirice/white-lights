@@ -86,6 +86,11 @@ ruff). The YOLO11-pose weights (`yolo11n-pose.pt`) auto-download on first run.
 ```bash
 # API + web UI  →  http://127.0.0.1:8000
 uvicorn api.main:app --reload
+#   /       upload a clip for batch judging
+#   /live   live webcam judge (real-time; needs the cv extra)
+
+# Live webcam judge in a terminal window (OpenCV), instead of the browser:
+python -m whitelights.live --camera 1     # try 1/2 to pick the built-in camera
 
 # Tests (deferred-feature contracts xfail by design)
 pytest
