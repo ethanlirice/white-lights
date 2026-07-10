@@ -39,21 +39,63 @@ class PostureConfig(BaseModel):
     min_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
     # Knee angle (deg) at or above which the leg counts as locked out.
     lockout_knee_angle_deg: float = 160.0
+    # Elbow angle (deg) at or above which the arm counts as locked out (bench).
+    lockout_elbow_angle_deg: float = 155.0
     # Ankle horizontal drift that trips FOOT_MOVEMENT, as a fraction of thigh
     # length (scale-invariant body reference).
     foot_movement_fraction: float = 0.15
 
 
+def joint_angle_deg(
+    frame: FrameKeypoints3D, a_name: str, b_name: str, c_name: str, min_confidence: float
+) -> float | None:
+    """Interior angle (degrees) at joint ``b`` for the chain a-b-c, or None.
+
+    None when any keypoint is missing or below ``min_confidence``. The building
+    block for both knee (hip-knee-ankle) and elbow (shoulder-elbow-wrist) angles.
+
+    NOTE: a "locked" joint rarely reads as a clean 180 deg from a pose estimator
+    (keypoint noise + anatomy vary), so callers should threshold well below 180
+    and/or calibrate against the individual's own locked angle rather than an
+    absolute — see the trackers' per-lifter lockout calibration.
+    """
+    a = frame.get(a_name)
+    b = frame.get(b_name)
+    c = frame.get(c_name)
+    if a is None or b is None or c is None:
+        return None
+    if min(a.confidence, b.confidence, c.confidence) < min_confidence:
+        return None
+    return _angle_deg(_vec(b, a), _vec(b, c))
+
+
 def knee_angle_deg(frame: FrameKeypoints3D, side: str, min_confidence: float) -> float | None:
     """Interior hip-knee-ankle angle (degrees) for one leg, or None if unknown."""
-    hip = frame.get(f"{side}_hip")
-    knee = frame.get(f"{side}_knee")
-    ankle = frame.get(f"{side}_ankle")
-    if hip is None or knee is None or ankle is None:
+    return joint_angle_deg(
+        frame, f"{side}_hip", f"{side}_knee", f"{side}_ankle", min_confidence
+    )
+
+
+def elbow_angle_deg(frame: FrameKeypoints3D, side: str, min_confidence: float) -> float | None:
+    """Interior shoulder-elbow-wrist angle (degrees) for one arm, or None (bench)."""
+    return joint_angle_deg(
+        frame, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist", min_confidence
+    )
+
+
+def arms_locked(frame: FrameKeypoints3D, config: PostureConfig) -> bool | None:
+    """Are both elbows locked in this frame? The more-bent arm governs.
+
+    Returns True/False when at least one arm is measurable, else None.
+    """
+    angles = [
+        a
+        for side in _SIDES
+        if (a := elbow_angle_deg(frame, side, config.min_confidence)) is not None
+    ]
+    if not angles:
         return None
-    if min(hip.confidence, knee.confidence, ankle.confidence) < min_confidence:
-        return None
-    return _angle_deg(_vec(knee, hip), _vec(knee, ankle))
+    return min(angles) >= config.lockout_elbow_angle_deg
 
 
 def is_locked_out(frame: FrameKeypoints3D, config: PostureConfig) -> bool | None:
