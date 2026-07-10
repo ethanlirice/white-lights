@@ -25,15 +25,20 @@ What this implementation does (v2.0 depth + v2.1 downward-movement)
     Any re-descent below the running ascent peak by more than a scale-invariant
     threshold (a fraction of the rep's hip travel) is flagged — this is the
     double-bounce / soft-out-of-the-hole no-lift.
+  * EARLY_DESCENT (v2.2): when referee ``commands`` are supplied, a rep whose
+    descent began before the "Squat!" (START) command is flagged — the lifter
+    moved before being told to.
   * Verdict per rep, accumulating faults: GOOD when a confident frame reached
     below parallel and no fault fired; NO_LIFT with the fault list otherwise
-    (INSUFFICIENT_DEPTH and/or DOWNWARD_MOVEMENT); UNCERTAIN when the rep had no
-    confident depth reading *and* no motion fault (never forces a depth call on
-    missing signal, but a clear motion fault still fails the lift).
+    (EARLY_DESCENT / INSUFFICIENT_DEPTH / DOWNWARD_MOVEMENT); UNCERTAIN when the
+    rep had no confident depth reading *and* no other fault (never forces a depth
+    call on missing signal, but a clear rule fault still fails the lift).
 
 Deferred (interfaces already carry the needed inputs, so no signature changes):
-  * v2.2 — command-timing faults (EARLY_DESCENT / EARLY_RACK); ``commands`` is
-    accepted now but not yet consulted.
+  * v2.2 — EARLY_RACK. Detecting that the lifter racked before the "Rack!"
+    command needs a rack-motion signal (the lifter leaving lockout / walking the
+    bar in), which pose-only segmentation does not yet expose; wiring the RACK
+    command through is done, the detector is not. TODO(ethan).
   * v2.3+ — postural / foot faults.
 """
 
@@ -44,7 +49,7 @@ from enum import StrEnum
 from pydantic import BaseModel
 
 from .depth import DepthFrameResult
-from .types import Fault, Pose3DSequence, RefereeCommand, RepVerdict, Verdict
+from .types import Command, Fault, Pose3DSequence, RefereeCommand, RepVerdict, Verdict
 
 _HIP_KEYPOINTS = ("left_hip", "right_hip")
 
@@ -73,6 +78,9 @@ class RepConfig(BaseModel):
     # travel (scale-invariant), with an absolute floor to suppress jitter.
     downward_movement_fraction: float = 0.05
     downward_movement_tolerance: float = 0.02
+    # Slack (seconds) before a descent that precedes the START command counts as
+    # EARLY_DESCENT — absorbs timestamp/frame quantisation noise.
+    command_tolerance_s: float = 0.1
 
 
 def segment_reps(
@@ -96,7 +104,7 @@ def segment_reps(
     hip_z = _hip_z_series(poses)
     segments = _segment_indices(hip_z, config)
     return [
-        _verdict_for_segment(idx, start, end, poses, depth_results, hip_z, config)
+        _verdict_for_segment(idx, start, end, poses, depth_results, hip_z, commands, config)
         for idx, (start, end) in enumerate(segments)
     ]
 
@@ -161,6 +169,7 @@ def _verdict_for_segment(
     poses: Pose3DSequence,
     depth_results: list[DepthFrameResult],
     hip_z: list[float | None],
+    commands: list[RefereeCommand] | None,
     config: RepConfig,
 ) -> RepVerdict:
     frames = poses.frames
@@ -175,8 +184,10 @@ def _verdict_for_segment(
         "end_time_s": frames[end].time_s,
     }
 
-    # Accumulate faults in a canonical order (depth first, then motion).
+    # Accumulate faults in roughly chronological order: command, depth, motion.
     faults: list[Fault] = []
+    if _is_early_descent(commands, frames[start].time_s, config):
+        faults.append(Fault.EARLY_DESCENT)
     depth_known = bool(confident)
     reached_depth = any(d.is_below_parallel for d in confident)
     if depth_known and not reached_depth:
@@ -225,3 +236,20 @@ def _has_downward_movement(
             return True
         running_peak = max(running_peak, v)
     return False
+
+
+def _is_early_descent(
+    commands: list[RefereeCommand] | None, descent_start_s: float, config: RepConfig
+) -> bool:
+    """True if the rep's descent began before the "Squat!" (START) command.
+
+    ``descent_start_s`` is the rep's last-at-lockout time (just before the hip
+    drops). If the START command is issued later than that (beyond a small
+    tolerance), the lifter moved before being told to.
+    """
+    if not commands:
+        return False
+    start_times = [c.time_s for c in commands if c.command == Command.START]
+    if not start_times:
+        return False
+    return descent_start_s < min(start_times) - config.command_tolerance_s
