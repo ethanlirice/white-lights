@@ -1,16 +1,11 @@
 """Contract tests for `reps.segment_reps`.
 
 Depth results are supplied as ground truth (via the `make_depth` fixture) so
-these test the state machine in isolation from the depth module.
-
-The DOWNWARD_MOVEMENT (v2.1) and command-timing (v2.2) tests are `strict` xfail:
-they encode the target behaviour and will flip to failures — the cue to drop the
-marker — once those features land.
+these test the state machine in isolation from the depth module. Covers depth
+verdicts, downward-movement (v2.1), and EARLY_DESCENT command timing (v2.2).
 """
 
 from __future__ import annotations
-
-import pytest
 
 from whitelights.depth import DepthFrameResult
 from whitelights.reps import segment_reps
@@ -84,7 +79,6 @@ def test_clean_squat_has_no_downward_movement(good_squat_3d, make_depth) -> None
     assert verdicts[0].verdict == Verdict.GOOD
 
 
-@pytest.mark.xfail(strict=True, reason="v2.2: command-timing faults not implemented")
 def test_descent_before_start_command_flags_early_descent(good_squat_3d, make_depth) -> None:
     # START issued late (after descent has begun) -> EARLY_DESCENT.
     commands = [
@@ -93,3 +87,20 @@ def test_descent_before_start_command_flags_early_descent(good_squat_3d, make_de
     ]
     verdicts = segment_reps(good_squat_3d, make_depth(good_squat_3d), commands=commands)
     assert Fault.EARLY_DESCENT in verdicts[0].faults
+    assert verdicts[0].verdict == Verdict.NO_LIFT
+
+
+def test_start_before_descent_is_not_early(good_squat_3d, make_depth) -> None:
+    # START issued at the very start, before any descent -> no fault.
+    commands = [
+        RefereeCommand(command=Command.START, time_s=0.0),
+        RefereeCommand(command=Command.RACK, time_s=good_squat_3d.frames[-1].time_s + 1),
+    ]
+    verdicts = segment_reps(good_squat_3d, make_depth(good_squat_3d), commands=commands)
+    assert Fault.EARLY_DESCENT not in verdicts[0].faults
+    assert verdicts[0].verdict == Verdict.GOOD
+
+
+def test_no_commands_means_no_command_faults(good_squat_3d, make_depth) -> None:
+    verdicts = segment_reps(good_squat_3d, make_depth(good_squat_3d), commands=None)
+    assert Fault.EARLY_DESCENT not in verdicts[0].faults
