@@ -312,7 +312,17 @@ class LiveJudge:
         self.estimator = estimator or PoseEstimator()
         self.fps = fps
         self.depth_config = depth_config or DepthConfig()
+        self._live_config = live_config
         self.tracker = OnlineRepTracker(live_config)
+        self.smoother = StreamingKeypointSmoother(min_confidence=self.tracker.config.min_confidence)
+        self._frame_idx = 0
+
+    def reset(self) -> None:
+        """Start fresh: new rep numbering and a re-learned standing reference.
+
+        Used at the start of a set / attempt so counts and the baseline restart.
+        """
+        self.tracker = OnlineRepTracker(self._live_config)
         self.smoother = StreamingKeypointSmoother(min_confidence=self.tracker.config.min_confidence)
         self._frame_idx = 0
 
