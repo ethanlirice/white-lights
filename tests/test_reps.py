@@ -104,3 +104,29 @@ def test_start_before_descent_is_not_early(good_squat_3d, make_depth) -> None:
 def test_no_commands_means_no_command_faults(good_squat_3d, make_depth) -> None:
     verdicts = segment_reps(good_squat_3d, make_depth(good_squat_3d), commands=None)
     assert Fault.EARLY_DESCENT not in verdicts[0].faults
+
+
+# --- postural faults (v2.3) --------------------------------------------------
+
+
+def test_clean_full_squat_has_no_postural_faults(make_full_squat, make_depth) -> None:
+    poses = make_full_squat()
+    verdicts = segment_reps(poses, make_depth(poses))
+    assert len(verdicts) == 1
+    assert verdicts[0].verdict == Verdict.GOOD
+    assert Fault.INCOMPLETE_LOCKOUT not in verdicts[0].faults
+    assert Fault.FOOT_MOVEMENT not in verdicts[0].faults
+
+
+def test_soft_knees_flag_incomplete_lockout(make_full_squat, make_depth) -> None:
+    poses = make_full_squat(bend_offset=0.3)  # knees bent even at the top
+    verdicts = segment_reps(poses, make_depth(poses))
+    assert Fault.INCOMPLETE_LOCKOUT in verdicts[0].faults
+    assert verdicts[0].verdict == Verdict.NO_LIFT
+
+
+def test_foot_shift_flags_foot_movement(make_full_squat, make_depth) -> None:
+    poses = make_full_squat(foot_shift=0.3)  # ankles drift during the rep
+    verdicts = segment_reps(poses, make_depth(poses))
+    assert Fault.FOOT_MOVEMENT in verdicts[0].faults
+    assert verdicts[0].verdict == Verdict.NO_LIFT

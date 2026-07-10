@@ -64,6 +64,45 @@ def make_squat_3d(
     return Pose3DSequence(fps=fps, frames=frames, camera_ids=["cam0"])
 
 
+def make_full_squat_3d(
+    hip_z_series: list[float],
+    *,
+    fps: float = FPS,
+    knee_z: float = KNEE_Z,
+    ankle_z: float = 0.0,
+    bend_offset: float = 0.0,
+    foot_shift: float = 0.0,
+    confidence: float = 0.95,
+) -> Pose3DSequence:
+    """Like `make_squat_3d` but with ankles, for postural detectors.
+
+    ``bend_offset`` displaces the hips in x so the hip-knee-ankle angle is bent
+    even at the top (simulates a soft/unlocked knee). ``foot_shift`` drifts the
+    ankles in x linearly across the clip (simulates a foot moving). Both default
+    to 0 (a clean, locked, still-footed squat).
+    """
+    n = len(hip_z_series)
+    frames: list[FrameKeypoints3D] = []
+    for i, hip_z in enumerate(hip_z_series):
+        c = confidence
+        drift = foot_shift * (i / (n - 1)) if n > 1 else 0.0
+        kps: dict[str, Keypoint3D] = {}
+        for side, sx in (("left", -0.1), ("right", 0.1)):
+            kps[f"{side}_hip"] = Keypoint3D(
+                name=f"{side}_hip", x=sx + bend_offset, y=0.0, z=hip_z, confidence=c
+            )
+            kps[f"{side}_knee"] = Keypoint3D(
+                name=f"{side}_knee", x=sx, y=0.0, z=knee_z, confidence=c
+            )
+            kps[f"{side}_ankle"] = Keypoint3D(
+                name=f"{side}_ankle", x=sx + drift, y=0.0, z=ankle_z, confidence=c
+            )
+        frames.append(
+            FrameKeypoints3D(frame_idx=i, time_s=i / fps, keypoints=kps, confidence=confidence)
+        )
+    return Pose3DSequence(fps=fps, frames=frames, camera_ids=["cam0"])
+
+
 def ground_truth_depth(
     sequence: Pose3DSequence, *, knee_z: float = KNEE_Z, min_confidence: float = 0.4
 ) -> list[DepthFrameResult]:
@@ -109,6 +148,21 @@ def bottom_of():
 def make_depth():
     """Return the ground-truth depth-results builder (isolates reps from depth)."""
     return ground_truth_depth
+
+
+@pytest.fixture
+def make_full_squat():
+    """Return a builder for a full-keypoint (with ankles) good-depth squat.
+
+    Call with ``bend_offset`` / ``foot_shift`` to inject postural faults.
+    """
+
+    def _build(*, bend_offset: float = 0.0, foot_shift: float = 0.0) -> Pose3DSequence:
+        return make_full_squat_3d(
+            v_series(1.0, 0.45), bend_offset=bend_offset, foot_shift=foot_shift
+        )
+
+    return _build
 
 
 @pytest.fixture
