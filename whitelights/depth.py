@@ -1,4 +1,4 @@
-"""Per-frame squat-depth judgment — STUB.
+"""Per-frame squat-depth judgment.
 
 The rule (IPF / USAPL, functionally identical): a squat reaches legal depth when
 the **hip crease drops below the top of the knee**. This module answers, for a
@@ -10,28 +10,36 @@ Contract
 Input:  one :class:`~whitelights.types.FrameKeypoints3D` (fused 3D, +z up).
 Output: a :class:`DepthFrameResult` for that frame.
 
-Requirements the implementation must honour:
-  * Depth metric: derive a hip-crease height and a top-of-knee height from the
-    hip/knee keypoints (see ``DEPTH_KEYPOINTS``), then
-    ``depth_margin = knee_top_z - hip_crease_z``. Positive == legal depth (hip
-    below knee). Note COCO gives a hip *joint* centre, not the anatomical
-    crease; account for the offset (TODO(ethan): calibrate).
-  * Confidence gating: if the contributing keypoints' confidence is below
-    ``config.min_confidence``, set ``gated=True`` and leave ``is_below_parallel``
-    as ``None`` (unknown) rather than guessing — this is what lets `reps.py`
-    return UNCERTAIN instead of a wrong call.
-  * Bilateral handling: combine left/right sides sensibly (the rules judge the
-    higher hip / the side facing the referee); TODO(ethan): decide policy.
+Implementation decisions
+------------------------
+  * Depth metric: ``depth_margin = knee_top_z - hip_crease_z`` in world units.
+    Positive == legal depth (hip crease below top of knee). The below-parallel
+    *call* is the pure sign of this margin, so it is scale-invariant — it holds
+    whether ``z`` is in pixels (single-camera fallback) or metric units (real
+    triangulation). Only absolute magnitudes differ between those modes.
+  * Hip crease: COCO gives a hip *joint* centre, so we drop it by
+    ``config.hip_crease_offset`` (world units, default 0 == uncalibrated) to
+    approximate the anatomical crease.
+  * Bilateral policy: judge the **higher** hip (``max z``) against the **higher**
+    knee (``max z``). Judging the higher/shallower hip is the conservative call —
+    if it has broken parallel, the lower one certainly has.
+  * Confidence gating: aggregate confidence is the **minimum** over the
+    contributing hip/knee keypoints (weakest link). Below ``min_confidence`` — or
+    a hip/knee entirely missing — yields ``gated=True`` and
+    ``is_below_parallel=None`` (unknown) rather than a guess, which is what lets
+    `reps.py` return UNCERTAIN.
 
-TODO(ethan): implement `judge_depth_frame`. `judge_depth_sequence` is a thin
-map provided for convenience once the per-frame logic exists.
+``judge_depth_sequence`` is a thin map over ``judge_depth_frame``.
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .types import FrameKeypoints3D, Pose3DSequence
+from .types import FrameKeypoints3D, Keypoint3D, Pose3DSequence
+
+_HIP_KEYPOINTS = ("left_hip", "right_hip")
+_KNEE_KEYPOINTS = ("left_knee", "right_knee")
 
 
 class DepthConfig(BaseModel):
@@ -61,9 +69,48 @@ def judge_depth_frame(
 ) -> DepthFrameResult:
     """Judge whether the subject is below parallel in a single frame.
 
-    See the module contract. Must confidence-gate rather than guess.
+    See the module contract. Confidence-gates rather than guessing.
     """
-    raise NotImplementedError("TODO(ethan): per-frame depth judgment not implemented")
+    config = config or DepthConfig()
+
+    hips: list[Keypoint3D] = [kp for name in _HIP_KEYPOINTS if (kp := frame.get(name)) is not None]
+    knees: list[Keypoint3D] = [
+        kp for name in _KNEE_KEYPOINTS if (kp := frame.get(name)) is not None
+    ]
+
+    # Can't judge without at least one hip and one knee.
+    if not hips or not knees:
+        return _gated(frame, confidence=0.0)
+
+    confidence = min(kp.confidence for kp in (*hips, *knees))
+    if confidence < config.min_confidence:
+        return _gated(frame, confidence=confidence)
+
+    # Higher (shallower) hip crease vs. higher knee — the conservative pairing.
+    hip_crease_z = max(kp.z - config.hip_crease_offset for kp in hips)
+    knee_top_z = max(kp.z for kp in knees)
+    margin = knee_top_z - hip_crease_z
+
+    return DepthFrameResult(
+        frame_idx=frame.frame_idx,
+        time_s=frame.time_s,
+        is_below_parallel=margin > 0,
+        depth_margin=margin,
+        confidence=confidence,
+        gated=False,
+    )
+
+
+def _gated(frame: FrameKeypoints3D, *, confidence: float) -> DepthFrameResult:
+    """A frame we decline to judge (missing or low-confidence keypoints)."""
+    return DepthFrameResult(
+        frame_idx=frame.frame_idx,
+        time_s=frame.time_s,
+        is_below_parallel=None,
+        depth_margin=None,
+        confidence=confidence,
+        gated=True,
+    )
 
 
 def judge_depth_sequence(
