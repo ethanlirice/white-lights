@@ -15,19 +15,23 @@ pose track); `DepthFrameResult` supplies the pass/fail evidence at the bottom;
 `RefereeCommand`s (optional) bound the attempt so command-timing faults can be
 checked.
 
-What this implementation does (v2.0 — depth only)
-------------------------------------------------
+What this implementation does (v2.0 depth + v2.1 downward-movement)
+-----------------------------------------------------------------
   * Segments reps from the hip trajectory using a scale-invariant midpoint
     crossing with hysteresis, measured relative to the observed hip-travel range
     of the clip. This holds whether ``z`` is in pixels (single-camera fallback)
     or metric units (real triangulation).
-  * Verdict per rep: GOOD when some confident frame in the rep was below
-    parallel; NO_LIFT + INSUFFICIENT_DEPTH when confident frames were seen but
-    none reached depth; UNCERTAIN when the rep had no confident depth reading
-    (never forces a call on missing signal).
+  * DOWNWARD_MOVEMENT (v2.1): after the bottom, the hip must rise monotonically.
+    Any re-descent below the running ascent peak by more than a scale-invariant
+    threshold (a fraction of the rep's hip travel) is flagged — this is the
+    double-bounce / soft-out-of-the-hole no-lift.
+  * Verdict per rep, accumulating faults: GOOD when a confident frame reached
+    below parallel and no fault fired; NO_LIFT with the fault list otherwise
+    (INSUFFICIENT_DEPTH and/or DOWNWARD_MOVEMENT); UNCERTAIN when the rep had no
+    confident depth reading *and* no motion fault (never forces a depth call on
+    missing signal, but a clear motion fault still fails the lift).
 
 Deferred (interfaces already carry the needed inputs, so no signature changes):
-  * v2.1 — DOWNWARD_MOVEMENT (re-descent on the ascent).
   * v2.2 — command-timing faults (EARLY_DESCENT / EARLY_RACK); ``commands`` is
     accepted now but not yet consulted.
   * v2.3+ — postural / foot faults.
@@ -65,7 +69,9 @@ class RepConfig(BaseModel):
     # judged to be descending into a rep (enter) vs. back at lockout (exit).
     enter_fraction: float = 0.5
     exit_fraction: float = 0.2
-    # Re-descent (world units) during ascent that trips DOWNWARD_MOVEMENT (v2.1).
+    # Re-descent that trips DOWNWARD_MOVEMENT, as a fraction of the rep's hip
+    # travel (scale-invariant), with an absolute floor to suppress jitter.
+    downward_movement_fraction: float = 0.05
     downward_movement_tolerance: float = 0.02
 
 
@@ -90,7 +96,7 @@ def segment_reps(
     hip_z = _hip_z_series(poses)
     segments = _segment_indices(hip_z, config)
     return [
-        _verdict_for_segment(idx, start, end, poses, depth_results)
+        _verdict_for_segment(idx, start, end, poses, depth_results, hip_z, config)
         for idx, (start, end) in enumerate(segments)
     ]
 
@@ -154,6 +160,8 @@ def _verdict_for_segment(
     end: int,
     poses: Pose3DSequence,
     depth_results: list[DepthFrameResult],
+    hip_z: list[float | None],
+    config: RepConfig,
 ) -> RepVerdict:
     frames = poses.frames
     seg_depth = [depth_results[i] for i in range(start, end + 1) if i < len(depth_results)]
@@ -167,27 +175,53 @@ def _verdict_for_segment(
         "end_time_s": frames[end].time_s,
     }
 
-    if not confident:
-        return RepVerdict(
-            verdict=Verdict.UNCERTAIN,
-            confidence=0.0,
-            faults=[],
-            depth_margin=None,
-            notes="No confident depth reading in this rep.",
-            **common,
-        )
-
-    deepest = max(confident, key=lambda d: d.depth_margin)
+    # Accumulate faults in a canonical order (depth first, then motion).
+    faults: list[Fault] = []
+    depth_known = bool(confident)
     reached_depth = any(d.is_below_parallel for d in confident)
-    if reached_depth:
-        verdict, faults = Verdict.GOOD, []
-    else:
-        verdict, faults = Verdict.NO_LIFT, [Fault.INSUFFICIENT_DEPTH]
+    if depth_known and not reached_depth:
+        faults.append(Fault.INSUFFICIENT_DEPTH)
+    if _has_downward_movement(hip_z, start, end, config):
+        faults.append(Fault.DOWNWARD_MOVEMENT)
 
+    if faults:
+        verdict = Verdict.NO_LIFT
+    elif not depth_known:
+        verdict = Verdict.UNCERTAIN
+    else:
+        verdict = Verdict.GOOD
+
+    deepest = max(confident, key=lambda d: d.depth_margin) if confident else None
     return RepVerdict(
         verdict=verdict,
-        confidence=deepest.confidence,
+        confidence=deepest.confidence if deepest else 0.0,
         faults=faults,
-        depth_margin=deepest.depth_margin,
+        depth_margin=deepest.depth_margin if deepest else None,
+        notes=None if depth_known else "No confident depth reading in this rep.",
         **common,
     )
+
+
+def _has_downward_movement(
+    hip_z: list[float | None], start: int, end: int, config: RepConfig
+) -> bool:
+    """True if the hip re-descends past the running ascent peak after the bottom.
+
+    The threshold is a fraction of the rep's hip travel (scale-invariant) with an
+    absolute floor, so it behaves the same in pixel and metric ``z``.
+    """
+    values = [(i, hip_z[i]) for i in range(start, end + 1) if hip_z[i] is not None]
+    if len(values) < 3:
+        return False
+
+    zs = [v for _, v in values]
+    travel = max(zs) - min(zs)
+    threshold = max(config.downward_movement_tolerance, config.downward_movement_fraction * travel)
+
+    bottom_pos = min(range(len(values)), key=lambda k: values[k][1])
+    running_peak = values[bottom_pos][1]
+    for _, v in values[bottom_pos + 1 :]:  # the ascent phase
+        if v < running_peak - threshold:
+            return True
+        running_peak = max(running_peak, v)
+    return False
