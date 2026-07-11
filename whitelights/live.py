@@ -87,6 +87,8 @@ class LiveStatus:
     last_verdict: RepVerdict | None
     rep_completed: bool
     command: str | None = None  # "SQUAT"/"RACK" on the frame it is issued (competition mode)
+    checkpoint: bool | None = None  # the lift's key checkpoint met (squat: below parallel;
+    # bench: bar on chest; deadlift: locked out) — feeds the generic "checkpoint light".
 
 
 @dataclass
@@ -287,6 +289,7 @@ class OnlineRepTracker:
             state=self.state,
             note=note,
             below_parallel=below,
+            checkpoint=below,  # squat's key checkpoint == below parallel
             depth_margin=margin,
             hip_z=hip,
             standing_ref=self._standing_hip,
@@ -548,6 +551,7 @@ class CompetitionTracker:
             state=self.state,
             note=note,
             below_parallel=below,
+            checkpoint=below,  # squat's key checkpoint == below parallel
             depth_margin=margin,
             hip_z=hip,
             standing_ref=self._standing_hip,

@@ -73,13 +73,17 @@ def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height
         verdict = status.last_verdict.model_dump(mode="json")
     return {
         "state": str(status.state),
-        "below_parallel": status.below_parallel,
+        # Generic per-lift "key checkpoint met" (squat: below parallel; bench: bar
+        # on chest; deadlift: locked). Kept under `below_parallel` for the current
+        # depth-lamp; also sent as `checkpoint` for the generic checkpoint light.
+        "below_parallel": status.checkpoint,
+        "checkpoint": status.checkpoint,
         "depth_progress": max(0.0, min(1.0, status.descent_fraction or 0.0)),
         "rep_completed": status.rep_completed,
         "verdict": verdict,
         "note": status.note,
         "keypoints": keypoints or None,
-        "command": status.command,  # "SQUAT"/"RACK" in competition mode, else None
+        "command": status.command,  # e.g. SQUAT / PRESS / RACK / DOWN, else None
     }
 
 
@@ -144,13 +148,11 @@ def _handle_control(judge: LiveJudge, text: str) -> None:
         return
     if cmd.get("cmd") not in ("reset", "start"):
         return
-    from whitelights.live import CompetitionTracker, OnlineRepTracker
+    lift, mode = cmd.get("lift"), cmd.get("mode")
+    if lift or mode:
+        from whitelights.judges import tracker_for
 
-    mode = cmd.get("mode")
-    if mode == "competition":
-        judge.set_tracker(CompetitionTracker())
-    elif mode == "training":
-        judge.set_tracker(OnlineRepTracker())
+        judge.set_tracker(tracker_for(lift, mode))
     else:
         judge.reset()
 
