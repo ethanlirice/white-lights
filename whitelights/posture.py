@@ -71,9 +71,7 @@ def joint_angle_deg(
 
 def knee_angle_deg(frame: FrameKeypoints3D, side: str, min_confidence: float) -> float | None:
     """Interior hip-knee-ankle angle (degrees) for one leg, or None if unknown."""
-    return joint_angle_deg(
-        frame, f"{side}_hip", f"{side}_knee", f"{side}_ankle", min_confidence
-    )
+    return joint_angle_deg(frame, f"{side}_hip", f"{side}_knee", f"{side}_ankle", min_confidence)
 
 
 def elbow_angle_deg(frame: FrameKeypoints3D, side: str, min_confidence: float) -> float | None:
