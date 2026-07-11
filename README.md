@@ -13,7 +13,7 @@ competition mode) the referee commands issued by the computer itself.
 
 > **▶︎ [Live UI demo](https://ethanlirice.github.io/white-lights/)** — runs in your
 > browser, nothing to install.
-> ⚠️ The hosted link is a **UI demo only**: GitHub Pages can't run the pose model,
+> The hosted link is a **UI demo only**: GitHub Pages can't run the pose model,
 > so it plays a built-in **simulator**. Real judging (webcam → YOLO → verdicts)
 > runs when you start the backend locally or deploy it — see
 > [Run](#run) and [docs/DEPLOY.md](docs/DEPLOY.md).
@@ -27,9 +27,9 @@ competition mode) the referee commands issued by the computer itself.
 Two modes, three lifts (**squat** fully live; **bench** and **deadlift** working
 drafts):
 
-- 🏋️ **Training** — free reps: pick a weight, start a set, get a live GOOD /
+-  **Training** — free reps: pick a weight, start a set, get a live GOOD /
   NO&nbsp;LIFT call on every rep, log your set history (in-browser, exportable).
-- 🏆 **Competition** — the computer plays referee: it detects a still, locked-out
+-  **Competition** — the computer plays referee: it detects a still, locked-out
   setup, **issues the commands itself** (`SQUAT`/`RACK`, `START`/`PRESS`/`RACK`,
   or `DOWN`), judges the single attempt against the full rulebook, and gives a
   "three white lights" verdict.
