@@ -7,9 +7,12 @@ fault(s) flagged.
 
 > **▶︎ Live UI demo (in your browser, nothing to install):**
 > **https://ethanlirice.github.io/white-lights/**
-> *Backendless preview — the interface runs on a built-in simulator so you can
-> click through it. Run it locally with `uvicorn` (below) for real webcam
-> judging.*
+>
+> ⚠️ **This hosted link is a UI demo only — it does _not_ judge real movement.**
+> GitHub Pages can't run the pose model, so the page falls back to a built-in
+> **simulator** that plays canned data to show off the interface. The actual
+> judging (real webcam → YOLO pose → live verdicts) only runs when you start the
+> **backend locally** — see [Run](#run) below.
 
 **Two modes:**
 
@@ -26,19 +29,6 @@ referee-command state machine, streamed over a browser ↔ FastAPI WebSocket.
 Squat is fully implemented; **bench press and deadlift are in progress**. When
 a call is genuinely borderline it returns **UNCERTAIN** ("too close to call")
 rather than forcing a guess. See [DESIGN.md](DESIGN.md).
-
-## Screenshots
-
-> _Add screenshots / a short demo GIF here so the UI is visible without running
-> it._ Capture the live app (Training + Competition), drop the files into
-> `docs/screenshots/`, and reference them:
-
-<!--
-![Competition mode — the SQUAT command](docs/screenshots/competition.png)
-![Training mode — live reps + set history](docs/screenshots/training.png)
--->
-
-<!-- Or just drag images into this README on github.com and they upload + embed automatically. -->
 
 ## What it judges
 
@@ -112,11 +102,16 @@ ruff). The YOLO11-pose weights (`yolo11n-pose.pt`) auto-download on first run.
 
 ## Run
 
+**This is the real, working judge** — the hosted GitHub Pages link is a
+simulated UI demo only. Run the backend locally, then open `/live` in your
+browser for actual webcam judging (needs the `cv` extra so the pose model runs).
+
 ```bash
 # API + web UI  →  http://127.0.0.1:8000
-uvicorn api.main:app --reload
+uvicorn api.main:app
 #   /       upload a clip for batch judging
-#   /live   live webcam judge (real-time; needs the cv extra)
+#   /live   live webcam judge — the real thing (real-time; needs the cv extra)
+# (avoid `--reload` here: it watches the whole .venv and thrashes on torch's files)
 
 # Live webcam judge in a terminal window (OpenCV), instead of the browser:
 python -m whitelights.live --camera 1     # try 1/2 to pick the built-in camera

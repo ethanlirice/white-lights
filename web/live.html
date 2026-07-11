@@ -131,6 +131,17 @@
   #connDot.demo{ background: var(--amber); }
   #themeToggle{ background: transparent; border: 0; padding: 9px 12px; font-size: 16px; line-height: 1; }
 
+  /* ---------- demo-mode banner ---------- */
+  #demoBanner{
+    position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+    z-index: 40; display: none; max-width: 92vw;
+    background: var(--amber); color: oklch(20% 0.05 85);
+    font-size: 13px; font-weight: 700; line-height: 1.35; text-align: center;
+    padding: 10px 18px; border-radius: 14px;
+    box-shadow: 0 10px 30px oklch(0% 0 0 / 0.45);
+  }
+  #demoBanner.show{ display: block; }
+
   /* ---------- mode switch ---------- */
   #modeSwitch{
     position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 20;
@@ -321,6 +332,11 @@
 </head>
 <body>
 <div id="app">
+
+  <div id="demoBanner">
+    ⚠️ Demo mode — simulated data, not real judging. Run the backend locally
+    (<code>uvicorn api.main:app</code>) for real webcam judging.
+  </div>
 
   <div id="stage">
     <video id="video" muted playsinline autoplay></video>
@@ -853,6 +869,8 @@
     if (kind === 'live'){ connDot.classList.add('live'); connLabel.textContent = 'Live'; }
     else if (kind === 'demo'){ connDot.classList.add('demo'); connLabel.textContent = 'Demo data'; }
     else { connLabel.textContent = 'Connecting'; }
+    var banner = document.getElementById('demoBanner');
+    if (banner) banner.classList.toggle('show', kind === 'demo');
   }
 
   function wsUrl(){
