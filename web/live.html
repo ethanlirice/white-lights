@@ -144,15 +144,31 @@
 
   /* ---------- mode switch ---------- */
   #modeSwitch{
-    position: absolute; top: 16px; left: 50%; transform: translateX(-50%); z-index: 20;
+    position: absolute; top: 16px; left: 0; right: 0; margin-inline: auto; width: fit-content; z-index: 20;
     display: flex; padding: 4px; gap: 4px;
   }
-  #modeSwitch button{
+  #modeSwitch button{ white-space: nowrap;
     background: transparent; border: 0; padding: 9px 20px; border-radius: 999px;
     font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
     color: var(--text-dim); transition: background .2s, color .2s;
   }
   #modeSwitch button.active{ background: var(--text); color: var(--bg-2); }
+  #modeSwitch .lift-btn{ padding: 9px 16px; }
+  .switch-divider{ width: 1px; align-self: stretch; margin: 6px 2px; background: var(--border-strong); }
+
+  /* ---------- command tracker (competition) ---------- */
+  #cmdTracker{ display: none; align-items: center; gap: 6px; flex-wrap: wrap; }
+  #cmdTracker.show{ display: flex; }
+  .cmd-chip{
+    font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 999px;
+    background: oklch(0% 0 0 / 0.25); color: var(--text-faint); border: 1px solid var(--border);
+    transition: background .25s, color .25s, box-shadow .25s;
+  }
+  :root[data-theme="light"] .cmd-chip{ background: oklch(0% 0 0 / 0.05); }
+  .cmd-chip.done{ background: var(--green-glow); color: var(--green); border-color: transparent; }
+  .cmd-chip.current{ background: var(--white-lamp); color: oklch(12% 0.012 260); border-color: transparent; box-shadow: 0 0 12px oklch(100% 0 0 / 0.4); }
+  .cmd-sep{ color: var(--text-faint); font-size: 10px; }
 
   /* ---------- signature depth module ---------- */
   #depthModule{
@@ -311,8 +327,12 @@
   /* ---------- misc ---------- */
   .sr-only{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 
-  @media (max-width: 760px){
+  @media (max-width: 1320px){
     #modeSwitch{ top: 68px; }
+  }
+  @media (max-width: 760px){
+    #modeSwitch{ flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 20px); border-radius: 22px; }
+    .switch-divider{ display: none; }
     #depthModule, #modeCards{ width: calc(50% - 34px); }
     #depthModule{ left: 12px; bottom: 12px; padding: 16px; }
     #modeCards{ right: 12px; bottom: 12px; }
@@ -349,7 +369,7 @@
           <div class="gate-dot"></div><div class="gate-dot on"></div><div class="gate-dot"></div>
         </div>
         <h1 class="gate-title condensed">WHITE LIGHTS</h1>
-        <p class="gate-sub">Real-time squat-depth judging. Enable your camera to start a training set or run a competition attempt.</p>
+        <p class="gate-sub">Real-time judging for squat, bench, and deadlift. Enable your camera to start a training set or run a competition attempt.</p>
         <button id="enableCamBtn">Enable Camera</button>
         <div class="gate-error" id="gateError"></div>
       </div>
@@ -393,9 +413,13 @@
     </div>
   </header>
 
-  <nav id="modeSwitch" class="glass">
-    <button id="modeTrainBtn" class="active">Training</button>
-    <button id="modeCompBtn">Competition</button>
+  <nav id="modeSwitch" class="glass" aria-label="Lift and mode">
+    <button id="liftSquatBtn" class="lift-btn active" data-lift="squat">Squat</button>
+    <button id="liftBenchBtn" class="lift-btn" data-lift="bench">Bench</button>
+    <button id="liftDeadliftBtn" class="lift-btn" data-lift="deadlift">Deadlift</button>
+    <div class="switch-divider"></div>
+    <button id="modeTrainBtn" class="active">Training Mode</button>
+    <button id="modeCompBtn">Competition Mode</button>
   </nav>
 
   <section id="depthModule" class="glass">
@@ -403,12 +427,13 @@
       <div class="lamp-housing"><div id="light" class="grey"></div></div>
       <div class="lamp-labels">
         <div id="state" class="condensed">STANDING</div>
-        <div class="depth-caption">Depth light</div>
+        <div class="depth-caption" id="checkpointLabel">Depth light</div>
       </div>
     </div>
     <div>
       <div class="depth-track"><div id="fill"></div></div>
     </div>
+    <div id="cmdTracker" aria-label="Referee command sequence"></div>
     <div id="note">Waiting for the camera feed…</div>
   </section>
 
@@ -549,15 +574,16 @@
       var sub = document.createElement('div'); sub.className = 'hist-sub';
       var badges = document.createElement('div'); badges.className = 'hist-badges';
       var when = new Date(entry.time).toLocaleString();
+      var liftName = entry.lift ? entry.lift.charAt(0).toUpperCase() + entry.lift.slice(1) : 'Squat';
       if (entry.type === 'training'){
-        title.textContent = (entry.weight || '—') + ' ' + (entry.unit || 'kg') + ' · ' + entry.reps.length + ' rep' + (entry.reps.length===1?'':'s');
+        title.textContent = liftName + ' · ' + (entry.weight || '—') + ' ' + (entry.unit || 'kg') + ' · ' + entry.reps.length + ' rep' + (entry.reps.length===1?'':'s');
         sub.textContent = when;
         entry.reps.forEach(function(r){
           var b = document.createElement('span'); b.className = 'badge ' + r.verdict; b.textContent = r.verdict.replace('_',' ');
           badges.appendChild(b);
         });
       } else {
-        title.textContent = 'Competition attempt';
+        title.textContent = liftName + ' · Competition attempt';
         sub.textContent = when;
         var b = document.createElement('span'); b.className = 'badge ' + entry.verdict; b.textContent = entry.verdict.replace('_',' ');
         badges.appendChild(b);
@@ -598,6 +624,69 @@
     if (confirm('Clear all history? This cannot be undone.')){ saveHistory([]); renderHistory(); }
   });
 
+  /* ===================== LIFT SELECT ===================== */
+  var LIFTS = {
+    squat: {
+      label: 'Squat',
+      commands: ['SQUAT', 'RACK'],
+      checkpointLabel: 'Depth light',
+      compIntro: 'Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Squat</strong> and <strong>Rack</strong> for you.',
+      goodNote: 'Depth confirmed on all three lights.'
+    },
+    bench: {
+      label: 'Bench',
+      commands: ['START', 'PRESS', 'RACK'],
+      checkpointLabel: 'Chest touch · lockout',
+      compIntro: 'Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Start</strong>, <strong>Press</strong> and <strong>Rack</strong> for you.',
+      goodNote: 'Chest touch and lockout confirmed on all three lights.'
+    },
+    deadlift: {
+      label: 'Deadlift',
+      commands: ['DOWN'],
+      checkpointLabel: 'Lockout light',
+      compIntro: 'Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Down</strong> once you are locked out.',
+      goodNote: 'Lockout confirmed on all three lights.'
+    }
+  };
+  var lift = 'squat';
+  var liftBtns = [document.getElementById('liftSquatBtn'), document.getElementById('liftBenchBtn'), document.getElementById('liftDeadliftBtn')];
+  var checkpointLabel = document.getElementById('checkpointLabel');
+  var cmdTracker = document.getElementById('cmdTracker');
+
+  function renderTracker(currentIdx){
+    // currentIdx: index of the command just issued; -1 = none yet; >= length = all done
+    var cmds = LIFTS[lift].commands;
+    cmdTracker.innerHTML = '';
+    cmds.forEach(function(c, i){
+      if (i > 0){
+        var sep = document.createElement('span'); sep.className = 'cmd-sep'; sep.textContent = '›';
+        cmdTracker.appendChild(sep);
+      }
+      var chip = document.createElement('span');
+      chip.className = 'cmd-chip' + (i < currentIdx ? ' done' : (i === currentIdx ? ' current' : ''));
+      chip.textContent = c;
+      cmdTracker.appendChild(chip);
+    });
+  }
+  function updateTrackerFor(word){
+    var idx = LIFTS[lift].commands.indexOf(word);
+    if (idx >= 0) renderTracker(idx);
+  }
+
+  function setLift(next){
+    if (!LIFTS[next] || compRunning) return;
+    lift = next;
+    liftBtns.forEach(function(b){ b.classList.toggle('active', b.dataset.lift === lift); });
+    checkpointLabel.textContent = LIFTS[lift].checkpointLabel;
+    compStatus.innerHTML = LIFTS[lift].compIntro;
+    renderTracker(-1);
+    cmdTracker.classList.toggle('show', mode === 'competition');
+    sendControl({ cmd: 'start', mode: mode, lift: lift });  // switch the server-side judge
+  }
+  liftBtns.forEach(function(b){
+    b.addEventListener('click', function(){ setLift(b.dataset.lift); });
+  });
+
   /* ===================== MODE SWITCH ===================== */
   var mode = 'training'; // 'training' | 'competition'
   function setMode(next){
@@ -606,7 +695,9 @@
     modeCompBtn.classList.toggle('active', mode === 'competition');
     trainCard.classList.toggle('hidden', mode !== 'training');
     compCard.classList.toggle('hidden', mode !== 'competition');
-    sendControl({ cmd: 'start', mode: mode });  // switch the server-side judge
+    cmdTracker.classList.toggle('show', mode === 'competition');
+    renderTracker(-1);
+    sendControl({ cmd: 'start', mode: mode, lift: lift });  // switch the server-side judge
   }
   modeTrainBtn.addEventListener('click', function(){ setMode('training'); });
   modeCompBtn.addEventListener('click', function(){ setMode('competition'); });
@@ -633,7 +724,7 @@
       setBtn.classList.remove('active');
       if (currentReps.length){
         addHistoryEntry({
-          type: 'training', time: Date.now(),
+          type: 'training', lift: lift, time: Date.now(),
           weight: weightInput.value || null,
           unit: (weightUnit.querySelector('.active') || {}).dataset ? weightUnit.querySelector('.active').dataset.unit : 'kg',
           reps: currentReps
@@ -665,19 +756,28 @@
     compVerdict.style.display = 'none';
     compCmd.textContent = '';
     compBanner.classList.remove('show');
-    tracker.reset();
-    sendControl({ cmd: 'start', mode: 'competition' });  // reset the real judge for a fresh attempt
+    lastIssuedCmd = null;
+    renderTracker(-1);
+    if (typeof tracker !== 'undefined' && tracker && tracker.reset) tracker.reset();
+    sendControl({ cmd: 'start', mode: 'competition', lift: lift });  // reset the real judge for a fresh attempt
   }
   newAttempt.addEventListener('click', function(){ compBanner.classList.remove('show'); startAttempt(); });
   newAttempt2.addEventListener('click', startAttempt);
 
+  var lastIssuedCmd = null;
   function issueCommand(word){
+    if (word === lastIssuedCmd) return;
+    lastIssuedCmd = word;
     compCmd.textContent = word;
     compVerdict.style.display = 'none';
     compBanner.classList.add('show');
     flashPulse();
-    beep(word === 'SQUAT' ? 880 : 660, 0.18);
-    if (word === 'SQUAT') setTimeout(function(){ if (compCmd.textContent === 'SQUAT') compBanner.classList.remove('show'); }, 1000);
+    updateTrackerFor(word);
+    var cmds = LIFTS[lift].commands;
+    var isFinal = cmds.indexOf(word) === cmds.length - 1;
+    beep(isFinal ? 660 : 880, 0.18);
+    // Intermediate commands auto-dismiss; the final command holds until the verdict.
+    if (!isFinal) setTimeout(function(){ if (compCmd.textContent === word) compBanner.classList.remove('show'); }, 1000);
   }
 
   function revealVerdict(verdict){
@@ -690,7 +790,8 @@
     compVerdictLabel.textContent = verdict.verdict.replace('_', ' ');
     compVerdictFaults.textContent = verdict.faults && verdict.faults.length
       ? verdict.faults.map(function(f){ return f.replace(/_/g,' '); }).join(' · ')
-      : (verdict.verdict === 'GOOD' ? 'Depth confirmed on all three lights.' : '');
+      : (verdict.verdict === 'GOOD' ? LIFTS[lift].goodNote : '');
+    renderTracker(LIFTS[lift].commands.length);
     verdictLamps.forEach(function(lamp, i){ lamp.classList.remove('lit', 'red'); });
     var litCount = verdict.verdict === 'GOOD' ? 3 : (verdict.verdict === 'UNCERTAIN' ? 0 : 3);
     var isRed = verdict.verdict !== 'GOOD';
@@ -701,7 +802,7 @@
     });
     beep(verdict.verdict === 'GOOD' ? 990 : 220, 0.4);
     compStatus.innerHTML = 'Attempt judged <strong>' + verdict.verdict.replace('_',' ') + '</strong>. Press New Attempt to reset.';
-    addHistoryEntry({ type: 'competition', time: Date.now(), verdict: verdict.verdict, faults: verdict.faults || [] });
+    addHistoryEntry({ type: 'competition', lift: lift, time: Date.now(), verdict: verdict.verdict, faults: verdict.faults || [] });
   }
 
   /* ===================== SHARED STATUS HANDLER ===================== */
@@ -712,18 +813,23 @@
     // status: { state, below_parallel, depth_progress, rep_completed, verdict, note, keypoints }
     stateEl.textContent = status.state;
 
+    // Generic checkpoint light: prefers checkpoint_met, falls back to squat's below_parallel.
+    var cp = (status.checkpoint_met !== undefined) ? status.checkpoint_met : status.below_parallel;
     light.classList.remove('white', 'red', 'grey', 'pulse');
-    if (status.below_parallel === true){ light.classList.add('white'); }
-    else if (status.below_parallel === false){ light.classList.add('red'); }
+    if (cp === true){ light.classList.add('white'); }
+    else if (cp === false){ light.classList.add('red'); }
     else { light.classList.add('grey'); }
-    if (status.state === 'DESCENDING' || status.state === 'ASCENDING') light.classList.add('pulse');
+    var MOVING_STATES = { DESCENDING: 1, ASCENDING: 1, LOWERING: 1, PRESSING: 1, PULLING: 1 };
+    if (MOVING_STATES[status.state]) light.classList.add('pulse');
 
-    if (status.below_parallel !== lastLitState && status.below_parallel === true) flashPulse();
-    lastLitState = status.below_parallel;
+    if (cp !== lastLitState && cp === true) flashPulse();
+    lastLitState = cp;
 
-    var pct = Math.max(0, Math.min(1, status.depth_progress || 0)) * 100;
+    // Generic lift-progress bar: prefers lift_progress, falls back to depth_progress.
+    var prog = (status.lift_progress !== undefined) ? status.lift_progress : status.depth_progress;
+    var pct = Math.max(0, Math.min(1, prog || 0)) * 100;
     fill.style.width = pct + '%';
-    fill.style.background = status.below_parallel === true
+    fill.style.background = cp === true
       ? 'linear-gradient(90deg, oklch(80% 0.03 90), var(--white-lamp))'
       : 'linear-gradient(90deg, var(--red), oklch(80% 0.03 90))';
 
@@ -932,52 +1038,144 @@
     setConnStatus('demo');
     noteEl.textContent = 'No judging backend detected — showing simulated demo data.';
     var t0 = performance.now();
-    var cyclesSquatCalled = false;
+    var prevPhase = null;
+    var compT0 = null, compIssued = {}, compVerdictSent = false, prevArmed = false;
+
+    function verdictFor(l){
+      var good = Math.random() > 0.3;
+      var FAULTS = {
+        squat: ['INSUFFICIENT_DEPTH'],
+        bench: [Math.random() > 0.5 ? 'NO_CHEST_TOUCH' : 'NO_ELBOW_LOCKOUT'],
+        deadlift: [Math.random() > 0.5 ? 'SOFT_LOCKOUT' : 'DOWNWARD_MOVEMENT']
+      };
+      return { verdict: good ? 'GOOD' : 'NO_LIFT', confidence: 0.8 + Math.random() * 0.15, faults: good ? [] : FAULTS[l] };
+    }
+
+    // ---- free-rep cycles per lift (training mode + idle background) ----
+    function trainingStatus(t){
+      var c = (t % 6) / 6; // 6s cycle
+      var phase, cp, progress, note;
+      if (lift === 'bench'){
+        if (c < 0.15){ phase = 'RACKED'; progress = 0; cp = null; note = 'Bar held at lockout — waiting for descent.'; }
+        else if (c < 0.5){
+          phase = 'LOWERING'; progress = (c - 0.15) / 0.35; cp = progress > 0.9;
+          note = cp ? 'Bar motionless on the chest — touch confirmed.' : 'Lowering — bar ' + Math.round((1 - progress) * 20) + 'cm above the chest.';
+        } else if (c < 0.85){
+          phase = 'PRESSING'; progress = 1 - (c - 0.5) / 0.35; cp = progress < 0.08;
+          note = cp ? 'Elbows locked out — press complete.' : 'Pressing — extending to elbow lockout.';
+        } else { phase = 'RACKED'; progress = 0; cp = null; note = 'Lockout held. Ready for the next rep.'; }
+      } else if (lift === 'deadlift'){
+        if (c < 0.15){ phase = 'SETUP'; progress = 0; cp = null; note = 'Grip set — waiting for the pull.'; }
+        else if (c < 0.5){
+          phase = 'PULLING'; progress = (c - 0.15) / 0.35; cp = progress > 0.92;
+          note = cp ? 'Knees and hips locked — standing lockout confirmed.' : 'Pulling — extending hips and knees.';
+        } else if (c < 0.7){ phase = 'LOCKOUT'; progress = 1; cp = true; note = 'Standing lockout held — shoulders back, knees straight.'; }
+        else if (c < 0.95){ phase = 'LOWERING'; progress = 1 - (c - 0.7) / 0.25; cp = null; note = 'Returning the bar under control.'; }
+        else { phase = 'SETUP'; progress = 0; cp = null; note = 'Bar down. Ready for the next pull.'; }
+      } else {
+        if (c < 0.15){ phase = 'STANDING'; progress = 0; cp = null; note = 'Standing tall — waiting for descent.'; }
+        else if (c < 0.5){
+          phase = 'DESCENDING'; progress = (c - 0.15) / 0.35; cp = progress > 0.55;
+          note = cp ? 'Hip crease below the knee line — depth confirmed.' : 'Descending — hip is ' + Math.round((1 - progress) * 6) + 'cm above the knee line.';
+        } else if (c < 0.85){
+          phase = 'ASCENDING'; progress = 1 - (c - 0.5) / 0.35; cp = progress > 0.55;
+          note = 'Ascending — tracking bar path for downward movement.';
+        } else { phase = 'STANDING'; progress = 0; cp = null; note = 'Lockout held. Ready for the next rep.'; }
+      }
+
+      var restPhase = lift === 'bench' ? 'RACKED' : (lift === 'deadlift' ? 'SETUP' : 'STANDING');
+      var lastMoving = lift === 'deadlift' ? 'LOWERING' : (lift === 'bench' ? 'PRESSING' : 'ASCENDING');
+      var repCompleted = (prevPhase === lastMoving && phase === restPhase);
+      prevPhase = phase;
+
+      return {
+        state: phase, checkpoint_met: cp, lift_progress: progress,
+        rep_completed: repCompleted, verdict: repCompleted ? verdictFor(lift) : null,
+        note: note, keypoints: null
+      };
+    }
+
+    // ---- scripted competition attempt per lift ----
+    var COMP_SCRIPTS = {
+      squat: [
+        { until: 1.5, state: 'STANDING', prog: 0, cp: null, note: 'Setup detected — hold still for the command.' },
+        { until: 1.6, cmd: 'SQUAT', state: 'STANDING', prog: 0, cp: null, note: 'Command given — squat when ready.' },
+        { until: 3.6, state: 'DESCENDING', ramp: [0, 1], cpAt: 0.55, note: 'Descending — tracking hip crease against the knee line.' },
+        { until: 5.6, state: 'ASCENDING', ramp: [1, 0], cpAt: 0.55, note: 'Ascending — tracking bar path for downward movement.' },
+        { until: 6.2, state: 'STANDING', prog: 0, cp: null, note: 'Lockout held — awaiting the rack command.' },
+        { until: 6.3, cmd: 'RACK', state: 'STANDING', prog: 0, cp: null, note: 'Rack command given.' },
+        { until: 7.2, state: 'STANDING', prog: 0, cp: null, note: 'Attempt complete — judging.' }
+      ],
+      bench: [
+        { until: 1.5, state: 'RACKED', prog: 0, cp: null, note: 'Setup detected — bar held at lockout.' },
+        { until: 1.6, cmd: 'START', state: 'RACKED', prog: 0, cp: null, note: 'Start command given — lower when ready.' },
+        { until: 3.6, state: 'LOWERING', ramp: [0, 1], cpAt: 0.9, note: 'Lowering — waiting for a motionless chest touch.' },
+        { until: 4.4, state: 'TOUCHED', prog: 1, cp: true, note: 'Bar motionless on the chest — hold for the press command.' },
+        { until: 4.5, cmd: 'PRESS', state: 'TOUCHED', prog: 1, cp: true, note: 'Press command given.' },
+        { until: 6.5, state: 'PRESSING', ramp: [1, 0], cpBelow: 0.08, note: 'Pressing — extending to elbow lockout.' },
+        { until: 7.1, state: 'LOCKED_OUT', prog: 0, cp: true, note: 'Elbows locked — awaiting the rack command.' },
+        { until: 7.2, cmd: 'RACK', state: 'LOCKED_OUT', prog: 0, cp: true, note: 'Rack command given.' },
+        { until: 8.1, state: 'RACKED', prog: 0, cp: null, note: 'Attempt complete — judging.' }
+      ],
+      deadlift: [
+        { until: 1.8, state: 'SETUP', prog: 0, cp: null, note: 'Grip set — pull when ready. No start command in the deadlift.' },
+        { until: 4.3, state: 'PULLING', ramp: [0, 1], cpAt: 0.92, note: 'Pulling — extending hips and knees.' },
+        { until: 5.3, state: 'LOCKOUT', prog: 1, cp: true, note: 'Standing lockout — shoulders back, knees straight.' },
+        { until: 5.4, cmd: 'DOWN', state: 'LOCKOUT', prog: 1, cp: true, note: 'Down command given — return the bar under control.' },
+        { until: 6.9, state: 'LOWERING', ramp: [1, 0], cp: null, note: 'Lowering the bar under control.' },
+        { until: 7.8, state: 'SETUP', prog: 0, cp: null, note: 'Attempt complete — judging.' }
+      ]
+    };
+
+    function competitionStatus(t){
+      var script = COMP_SCRIPTS[lift];
+      var stepStart = 0, step = null, i;
+      for (i = 0; i < script.length; i++){
+        if (t < script[i].until){ step = script[i]; break; }
+        stepStart = script[i].until;
+      }
+      if (!step){
+        // Script finished: emit the verdict once, then idle.
+        var last = script[script.length - 1];
+        var status = { state: last.state, checkpoint_met: null, lift_progress: 0, rep_completed: false, verdict: null, note: last.note, keypoints: null };
+        if (!compVerdictSent){
+          compVerdictSent = true;
+          status.rep_completed = true;
+          status.verdict = verdictFor(lift);
+        }
+        return status;
+      }
+      var prog = (step.prog !== undefined) ? step.prog
+        : step.ramp[0] + (step.ramp[1] - step.ramp[0]) * ((t - stepStart) / (step.until - stepStart));
+      var cp = (step.cp !== undefined) ? step.cp
+        : (step.cpAt !== undefined) ? (prog > step.cpAt)
+        : (step.cpBelow !== undefined) ? (prog < step.cpBelow)
+        : null;
+      var out = { state: step.state, checkpoint_met: cp, lift_progress: prog, rep_completed: false, verdict: null, note: step.note, keypoints: null };
+      if (step.cmd && !compIssued[step.cmd]){ compIssued[step.cmd] = true; out.command = step.cmd; }
+      return out;
+    }
+
     simTimer = setInterval(function(){
-      var t = (performance.now() - t0) / 1000;
-      var cyclePos = (t % 6) / 6; // 6s cycle: stand -> descend -> ascend -> stand
-      var phase, belowParallel, progress, note;
-      if (cyclePos < 0.15){ phase = 'STANDING'; progress = 0; belowParallel = null; note = 'Standing tall — waiting for descent.'; }
-      else if (cyclePos < 0.5){
-        phase = 'DESCENDING';
-        progress = (cyclePos - 0.15) / 0.35;
-        belowParallel = progress > 0.55;
-        note = belowParallel ? 'Hip crease below the knee line — depth confirmed.' : 'Descending — hip is ' + Math.round((1 - progress) * 6) + 'cm above the knee line.';
-      } else if (cyclePos < 0.85){
-        phase = 'ASCENDING';
-        progress = 1 - (cyclePos - 0.5) / 0.35;
-        belowParallel = progress > 0.55;
-        note = 'Ascending — tracking bar path for downward movement.';
-      } else { phase = 'STANDING'; progress = 0; belowParallel = null; note = 'Lockout held. Ready for the next rep.'; }
-
-      var repCompleted = false;
-      var verdict = null;
-      if (phase === 'STANDING' && cyclePos < 0.02){
-        // wrap point: a rep just completed
+      var status;
+      if (mode === 'competition' && compArmed){
+        if (!prevArmed){ compT0 = performance.now(); compIssued = {}; compVerdictSent = false; }
+        prevArmed = true;
+        status = competitionStatus((performance.now() - compT0) / 1000);
+      } else {
+        prevArmed = false;
+        status = trainingStatus((performance.now() - t0) / 1000);
+        // Outside an armed attempt, never emit rep verdicts into competition mode UI.
+        if (mode === 'competition'){ status.rep_completed = false; status.verdict = null; }
       }
-      var justCompleted = (window.__wlPrevPhase === 'ASCENDING' && phase === 'STANDING');
-      if (justCompleted){
-        repCompleted = true;
-        var good = Math.random() > 0.3;
-        verdict = { verdict: good ? 'GOOD' : 'NO_LIFT', confidence: 0.8 + Math.random()*0.15, faults: good ? [] : ['INSUFFICIENT_DEPTH'] };
-      }
-      window.__wlPrevPhase = phase;
-
-      applyStatus({
-        state: phase,
-        below_parallel: belowParallel,
-        depth_progress: progress,
-        rep_completed: repCompleted,
-        verdict: verdict,
-        note: note,
-        keypoints: null
-      });
+      applyStatus(status);
     }, 120);
   }
   function stopSimulator(){ if (simTimer){ clearInterval(simTimer); simTimer = null; } }
 
   /* ===================== INIT ===================== */
   populateCameraList();
+  setLift('squat');
   applyStatus({ state: 'STANDING', below_parallel: null, depth_progress: 0, note: 'Waiting for the camera feed…' });
 
 })();

@@ -6,7 +6,7 @@ extended, upright), holds motionless, and only lowers on the command.
 
 State machine::
 
-    AWAIT_LIFT -> LIFTING -> AWAIT_DOWN -> DONE
+    AWAIT_LIFT -> PULLING -> AWAIT_DOWN -> DONE
                      |
                      +-- gave up / re-descended without locking -> INCOMPLETE_LOCKOUT
 
@@ -45,7 +45,7 @@ _SIDES = ("left", "right")
 
 class DeadliftState(StrEnum):
     AWAIT_LIFT = "AWAIT_LIFT"  # bar on the floor, waiting for the pull
-    LIFTING = "LIFTING"  # bar rising toward lockout
+    PULLING = "PULLING"  # bar rising toward lockout
     AWAIT_DOWN = "AWAIT_DOWN"  # locked out, waiting for the DOWN command
     DONE = "DONE"
 
@@ -59,7 +59,7 @@ class DeadliftConfig(BaseModel):
     min_confidence: float = 0.5
     still_velocity_fraction: float = 0.40
     down_hold_s: float = 0.60  # still hold at lockout before DOWN
-    lift_enter_fraction: float = 0.25  # bar rise off the floor that starts LIFTING
+    lift_enter_fraction: float = 0.25  # bar rise off the floor that starts the pull
     downward_movement_fraction: float = 0.04  # any re-descent past this -> fault (strict)
     abort_fraction: float = 0.35  # big re-descent without lockout -> failed lift
     lockout_knee_angle_deg: float = 165.0
@@ -146,11 +146,11 @@ class DeadliftTracker:
             self._floor = min(self._floor, bar)
             if bar > self._floor + c.lift_enter_fraction * scale:
                 self._begin(frame, bar)
-                self.state = DeadliftState.LIFTING
+                self.state = DeadliftState.PULLING
                 note = "pulling…"
             else:
                 note = "set up and pull the bar when ready"
-        elif self.state == DeadliftState.LIFTING:
+        elif self.state == DeadliftState.PULLING:
             if bar < self._cand.peak_bar - c.downward_movement_fraction * scale:
                 self._cand.downward = True
             if bar < self._cand.peak_bar - c.abort_fraction * scale and not locked:

@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>White Lights — History</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg: oklch(16% 0.012 260);
+    --bg-2: oklch(12% 0.012 260);
+    --panel: oklch(20% 0.012 260 / 0.62);
+    --panel-solid: oklch(20% 0.012 260);
+    --border: oklch(100% 0 0 / 0.09);
+    --border-strong: oklch(100% 0 0 / 0.18);
+    --text: oklch(96% 0.004 90);
+    --text-dim: oklch(96% 0.004 90 / 0.58);
+    --text-faint: oklch(96% 0.004 90 / 0.34);
+    --red: oklch(58% 0.19 25);
+    --red-glow: oklch(58% 0.19 25 / 0.55);
+    --green: oklch(70% 0.17 150);
+    --green-glow: oklch(70% 0.17 150 / 0.55);
+    --amber: oklch(78% 0.15 85);
+    --amber-glow: oklch(78% 0.15 85 / 0.5);
+    --white-lamp: oklch(98% 0 0);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.7);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-condensed: "Arial Narrow", "Helvetica Neue Condensed", "Roboto Condensed", var(--font-ui);
+    --radius: 18px;
+  }
+  :root[data-theme="light"]{
+    color-scheme: light;
+    --bg: oklch(96% 0.005 90);
+    --bg-2: oklch(92% 0.006 90);
+    --panel: oklch(99% 0.004 90 / 0.72);
+    --panel-solid: oklch(99% 0.004 90);
+    --border: oklch(0% 0 0 / 0.08);
+    --border-strong: oklch(0% 0 0 / 0.16);
+    --text: oklch(20% 0.01 260);
+    --text-dim: oklch(20% 0.01 260 / 0.62);
+    --text-faint: oklch(20% 0.01 260 / 0.38);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.25);
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin: 0; }
+  body{ background: var(--bg); color: var(--text); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; line-height: 1.5; }
+  a{ color: var(--text); }
+  a:hover{ color: var(--text-dim); }
+  button{ cursor: pointer; font-family: inherit; color: inherit; }
+  .condensed{ font-family: var(--font-condensed); font-stretch: condensed; font-weight: 800; letter-spacing: -0.01em; }
+  .num{ font-variant-numeric: tabular-nums; }
+  .glass{ background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4); box-shadow: var(--shadow); }
+  .wrap{ max-width: 880px; margin: 0 auto; padding: 0 20px; }
+
+  header{ position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); background: color-mix(in oklch, var(--bg) 82%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  .nav{ display: flex; align-items: center; justify-content: space-between; padding: 14px 0; gap: 16px; }
+  .brand{ display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand-lights{ display: flex; gap: 5px; }
+  .brand-dot{ width: 8px; height: 8px; border-radius: 50%; background: var(--white-lamp); box-shadow: 0 0 8px 1px oklch(100% 0 0 / 0.5); }
+  .brand-word{ font-size: 15px; text-transform: uppercase; }
+  .nav-links{ display: flex; align-items: center; gap: 4px; }
+  .nav-links a{ text-decoration: none; font-size: 13px; font-weight: 600; color: var(--text-dim); padding: 8px 12px; border-radius: 999px; }
+  .nav-links a:hover{ color: var(--text); background: oklch(50% 0 0 / 0.12); }
+  .nav-links a.here{ color: var(--text); background: oklch(50% 0 0 / 0.14); }
+  #themeToggle{ background: transparent; border: 0; font-size: 16px; padding: 8px 10px; line-height: 1; }
+
+  .page-head{ display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 44px 0 20px; }
+  h1{ font-size: clamp(30px, 5vw, 44px); margin: 0; text-transform: uppercase; }
+  .page-sub{ color: var(--text-dim); font-size: 14px; margin: 6px 0 0; }
+  .head-actions{ display: flex; gap: 8px; }
+  .head-actions button{ background: transparent; border: 1px solid var(--border-strong); border-radius: 9px; padding: 9px 14px; font-size: 12px; font-weight: 600; color: var(--text-dim); }
+  .head-actions button:hover{ color: var(--text); }
+  input#importFile{ display: none; }
+
+  /* summary strip */
+  .summary{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+  .sum-card{ padding: 18px 20px; }
+  .sum-num{ font-size: 30px; line-height: 1; }
+  .sum-label{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); margin-top: 6px; }
+
+  /* filters */
+  .filters{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 26px; }
+  .seg{ display: flex; padding: 3px; gap: 3px; border-radius: 999px; }
+  .seg button{ background: transparent; border: 0; padding: 7px 14px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; color: var(--text-dim); }
+  .seg button.active{ background: var(--text); color: var(--bg-2); }
+
+  /* day groups */
+  .day-label{ font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-faint); margin: 26px 0 10px; }
+  .entries{ display: flex; flex-direction: column; gap: 10px; }
+  .entry{ padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .entry-main{ display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .entry-title{ font-size: 15px; font-weight: 700; }
+  .entry-title .lift-tag{
+    display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 3px 9px; border-radius: 999px; background: oklch(50% 0 0 / 0.16); color: var(--text-dim);
+    margin-right: 8px; vertical-align: 2px;
+  }
+  .entry-sub{ font-size: 12px; color: var(--text-faint); }
+  .entry-badges{ display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .badge{ font-size: 10px; font-weight: 800; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; }
+  .badge.GOOD{ background: var(--green-glow); color: var(--green); }
+  .badge.NO_LIFT{ background: var(--red-glow); color: var(--red); }
+  .badge.UNCERTAIN{ background: var(--amber-glow); color: var(--amber); }
+  .entry-faults{ font-size: 11px; color: var(--text-faint); }
+
+  #empty{ text-align: center; padding: 70px 20px; color: var(--text-dim); }
+  #empty .gate-lights{ display: flex; gap: 12px; justify-content: center; margin-bottom: 18px; }
+  #empty .gate-dot{ width: 12px; height: 12px; border-radius: 50%; background: var(--text-faint); }
+  #empty h2{ font-size: 24px; margin: 0 0 8px; text-transform: uppercase; }
+  #empty p{ font-size: 14px; margin: 0 0 22px; }
+  #empty a{ font-weight: 700; }
+
+  footer{ padding: 50px 0 40px; text-align: center; font-size: 12px; color: var(--text-faint); }
+
+  @media (max-width: 640px){
+    .summary{ grid-template-columns: 1fr 1fr; }
+    .entry{ flex-direction: column; align-items: flex-start; }
+    .entry-badges{ justify-content: flex-start; }
+    .nav-links a:not(.here){ display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="landing.html">
+      <div class="brand-lights"><div class="brand-dot"></div><div class="brand-dot"></div><div class="brand-dot"></div></div>
+      <span class="brand-word condensed">White Lights</span>
+    </a>
+    <nav class="nav-links">
+      <a href="live.html">Live Judge</a>
+      <a class="here" href="history.html">History</a>
+      <a href="stats.html">Stats</a>
+      <button id="themeToggle" title="Toggle theme">◐</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="page-head">
+    <div>
+      <h1 class="condensed">History</h1>
+      <p class="page-sub">Every training set and competition attempt, stored in this browser.</p>
+    </div>
+    <div class="head-actions">
+      <button id="exportBtn">Export</button>
+      <button id="importBtn">Import</button>
+      <button id="clearBtn">Clear</button>
+      <input id="importFile" type="file" accept="application/json" />
+    </div>
+  </div>
+
+  <div class="summary" id="summary">
+    <div class="sum-card glass"><div class="sum-num condensed num" id="sumSets">0</div><div class="sum-label">Training sets</div></div>
+    <div class="sum-card glass"><div class="sum-num condensed num" id="sumReps">0</div><div class="sum-label">Total reps</div></div>
+    <div class="sum-card glass"><div class="sum-num condensed num" id="sumAttempts">0</div><div class="sum-label">Attempts</div></div>
+    <div class="sum-card glass"><div class="sum-num condensed num" id="sumGoodRate">—</div><div class="sum-label">Good rate</div></div>
+  </div>
+
+  <div class="filters">
+    <div class="seg glass" id="liftFilter">
+      <button data-v="all" class="active">All lifts</button>
+      <button data-v="squat">Squat</button>
+      <button data-v="bench">Bench</button>
+      <button data-v="deadlift">Deadlift</button>
+    </div>
+    <div class="seg glass" id="typeFilter">
+      <button data-v="all" class="active">All</button>
+      <button data-v="training">Training</button>
+      <button data-v="competition">Competition</button>
+    </div>
+  </div>
+
+  <div id="log"></div>
+
+  <div id="empty" style="display:none">
+    <div class="gate-lights"><div class="gate-dot"></div><div class="gate-dot"></div><div class="gate-dot"></div></div>
+    <h2 class="condensed">Nothing logged yet</h2>
+    <p>Finish a training set or a competition attempt in the live judge and it will appear here.</p>
+    <a href="live.html">Open the Live Judge</a>
+  </div>
+
+  <footer>History lives in your browser's local storage. Export it before clearing your site data.</footer>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  /* theme */
+  var root = document.documentElement;
+  if (localStorage.getItem('wl.theme') === 'light') root.setAttribute('data-theme', 'light');
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    if (next === 'dark') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', 'light');
+    localStorage.setItem('wl.theme', next);
+  });
+
+  /* data: same schema live.html writes under 'wl.history' */
+  var HIST_KEY = 'wl.history';
+  function loadHistory(){ try{ return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }catch(e){ return []; } }
+  function saveHistory(list){ localStorage.setItem(HIST_KEY, JSON.stringify(list)); }
+  function liftOf(e){ return e.lift || 'squat'; } /* entries pre-dating the lift selector are squat */
+  function liftName(e){ var l = liftOf(e); return l.charAt(0).toUpperCase() + l.slice(1); }
+
+  var filters = { lift: 'all', type: 'all' };
+
+  function wireSeg(id, key){
+    var seg = document.getElementById(id);
+    seg.addEventListener('click', function(ev){
+      var btn = ev.target.closest('button'); if (!btn) return;
+      Array.prototype.forEach.call(seg.children, function(c){ c.classList.remove('active'); });
+      btn.classList.add('active');
+      filters[key] = btn.dataset.v;
+      render();
+    });
+  }
+  wireSeg('liftFilter', 'lift');
+  wireSeg('typeFilter', 'type');
+
+  function summarize(list){
+    var sets = 0, reps = 0, attempts = 0, good = 0, judged = 0;
+    list.forEach(function(e){
+      if (e.type === 'training'){
+        sets++;
+        (e.reps || []).forEach(function(r){ reps++; judged++; if (r.verdict === 'GOOD') good++; });
+      } else {
+        attempts++; judged++;
+        if (e.verdict === 'GOOD') good++;
+      }
+    });
+    document.getElementById('sumSets').textContent = sets;
+    document.getElementById('sumReps').textContent = reps;
+    document.getElementById('sumAttempts').textContent = attempts;
+    document.getElementById('sumGoodRate').textContent = judged ? Math.round(good / judged * 100) + '%' : '—';
+  }
+
+  function badge(v){
+    var b = document.createElement('span');
+    b.className = 'badge ' + v; b.textContent = v.replace('_', ' ');
+    return b;
+  }
+
+  function render(){
+    var all = loadHistory();
+    summarize(all);
+
+    var list = all.filter(function(e){
+      if (filters.lift !== 'all' && liftOf(e) !== filters.lift) return false;
+      if (filters.type !== 'all' && e.type !== filters.type) return false;
+      return true;
+    });
+
+    var log = document.getElementById('log');
+    var empty = document.getElementById('empty');
+    log.innerHTML = '';
+    if (!list.length){
+      empty.style.display = 'block';
+      if (all.length){
+        empty.querySelector('h2').textContent = 'No matches';
+        empty.querySelector('p').textContent = 'Nothing in your history matches these filters.';
+      }
+      return;
+    }
+    empty.style.display = 'none';
+
+    /* group by day, newest first (live.html unshifts, so list is already newest-first) */
+    var groups = {};
+    var order = [];
+    list.forEach(function(e){
+      var day = new Date(e.time).toDateString();
+      if (!groups[day]){ groups[day] = []; order.push(day); }
+      groups[day].push(e);
+    });
+
+    order.forEach(function(day){
+      var label = document.createElement('div');
+      label.className = 'day-label';
+      var d = new Date(day);
+      var today = new Date().toDateString() === day;
+      var yest = new Date(Date.now() - 864e5).toDateString() === day;
+      label.textContent = today ? 'Today' : yest ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      log.appendChild(label);
+
+      var wrap = document.createElement('div');
+      wrap.className = 'entries';
+      groups[day].forEach(function(e){
+        var row = document.createElement('div'); row.className = 'entry glass';
+        var main = document.createElement('div'); main.className = 'entry-main';
+        var title = document.createElement('div'); title.className = 'entry-title';
+        var tag = document.createElement('span'); tag.className = 'lift-tag'; tag.textContent = liftName(e);
+        title.appendChild(tag);
+        var sub = document.createElement('div'); sub.className = 'entry-sub';
+        var when = new Date(e.time).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+        var badges = document.createElement('div'); badges.className = 'entry-badges';
+
+        if (e.type === 'training'){
+          var reps = e.reps || [];
+          title.appendChild(document.createTextNode(
+            (e.weight ? e.weight + ' ' + (e.unit || 'kg') + ' · ' : '') + reps.length + ' rep' + (reps.length === 1 ? '' : 's')
+          ));
+          sub.textContent = 'Training set · ' + when;
+          reps.forEach(function(r){ badges.appendChild(badge(r.verdict)); });
+        } else {
+          title.appendChild(document.createTextNode('Competition attempt'));
+          sub.textContent = 'Competition · ' + when;
+          badges.appendChild(badge(e.verdict));
+          if (e.faults && e.faults.length){
+            var f = document.createElement('div'); f.className = 'entry-faults';
+            f.textContent = e.faults.map(function(x){ return x.replace(/_/g, ' ').toLowerCase(); }).join(' · ');
+            main.appendChild(f);
+          }
+        }
+        main.insertBefore(title, main.firstChild);
+        main.appendChild(sub);
+        row.appendChild(main); row.appendChild(badges);
+        wrap.appendChild(row);
+      });
+      log.appendChild(wrap);
+    });
+  }
+
+  /* export / import / clear — same behavior as live.html's drawer */
+  document.getElementById('exportBtn').addEventListener('click', function(){
+    var blob = new Blob([JSON.stringify(loadHistory(), null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'white-lights-history.json';
+    a.click();
+  });
+  var importFile = document.getElementById('importFile');
+  document.getElementById('importBtn').addEventListener('click', function(){ importFile.click(); });
+  importFile.addEventListener('change', function(){
+    var f = importFile.files[0]; if (!f) return;
+    var reader = new FileReader();
+    reader.onload = function(){
+      try{
+        var incoming = JSON.parse(reader.result);
+        if (!Array.isArray(incoming)) throw new Error('not an array');
+        saveHistory(incoming.concat(loadHistory()));
+        render();
+      }catch(e){ alert('Could not import history: ' + e.message); }
+      importFile.value = '';
+    };
+    reader.readAsText(f);
+  });
+  document.getElementById('clearBtn').addEventListener('click', function(){
+    if (confirm('Clear all history? This cannot be undone.')){ saveHistory([]); render(); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>White Lights — Stats</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg: oklch(16% 0.012 260);
+    --bg-2: oklch(12% 0.012 260);
+    --panel: oklch(20% 0.012 260 / 0.62);
+    --panel-solid: oklch(20% 0.012 260);
+    --border: oklch(100% 0 0 / 0.09);
+    --border-strong: oklch(100% 0 0 / 0.18);
+    --text: oklch(96% 0.004 90);
+    --text-dim: oklch(96% 0.004 90 / 0.58);
+    --text-faint: oklch(96% 0.004 90 / 0.34);
+    --red: oklch(58% 0.19 25);
+    --red-glow: oklch(58% 0.19 25 / 0.55);
+    --green: oklch(70% 0.17 150);
+    --green-glow: oklch(70% 0.17 150 / 0.55);
+    --amber: oklch(78% 0.15 85);
+    --amber-glow: oklch(78% 0.15 85 / 0.5);
+    --white-lamp: oklch(98% 0 0);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.7);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-condensed: "Arial Narrow", "Helvetica Neue Condensed", "Roboto Condensed", var(--font-ui);
+    --radius: 18px;
+    --grid-line: oklch(100% 0 0 / 0.07);
+  }
+  :root[data-theme="light"]{
+    color-scheme: light;
+    --bg: oklch(96% 0.005 90);
+    --bg-2: oklch(92% 0.006 90);
+    --panel: oklch(99% 0.004 90 / 0.72);
+    --panel-solid: oklch(99% 0.004 90);
+    --border: oklch(0% 0 0 / 0.08);
+    --border-strong: oklch(0% 0 0 / 0.16);
+    --text: oklch(20% 0.01 260);
+    --text-dim: oklch(20% 0.01 260 / 0.62);
+    --text-faint: oklch(20% 0.01 260 / 0.38);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.25);
+    --grid-line: oklch(0% 0 0 / 0.07);
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin: 0; }
+  body{ background: var(--bg); color: var(--text); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; line-height: 1.5; }
+  a{ color: var(--text); }
+  a:hover{ color: var(--text-dim); }
+  button{ cursor: pointer; font-family: inherit; color: inherit; }
+  .condensed{ font-family: var(--font-condensed); font-stretch: condensed; font-weight: 800; letter-spacing: -0.01em; }
+  .num{ font-variant-numeric: tabular-nums; }
+  .glass{ background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4); box-shadow: var(--shadow); }
+  .wrap{ max-width: 960px; margin: 0 auto; padding: 0 20px; }
+
+  header{ position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); background: color-mix(in oklch, var(--bg) 82%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  .nav{ display: flex; align-items: center; justify-content: space-between; padding: 14px 0; gap: 16px; }
+  .brand{ display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand-lights{ display: flex; gap: 5px; }
+  .brand-dot{ width: 8px; height: 8px; border-radius: 50%; background: var(--white-lamp); box-shadow: 0 0 8px 1px oklch(100% 0 0 / 0.5); }
+  .brand-word{ font-size: 15px; text-transform: uppercase; }
+  .nav-links{ display: flex; align-items: center; gap: 4px; }
+  .nav-links a{ text-decoration: none; font-size: 13px; font-weight: 600; color: var(--text-dim); padding: 8px 12px; border-radius: 999px; }
+  .nav-links a:hover{ color: var(--text); background: oklch(50% 0 0 / 0.12); }
+  .nav-links a.here{ color: var(--text); background: oklch(50% 0 0 / 0.14); }
+  #themeToggle{ background: transparent; border: 0; font-size: 16px; padding: 8px 10px; line-height: 1; }
+
+  .page-head{ display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; padding: 44px 0 24px; }
+  h1{ font-size: clamp(30px, 5vw, 44px); margin: 0; text-transform: uppercase; }
+  .page-sub{ color: var(--text-dim); font-size: 14px; margin: 6px 0 0; }
+  #sampleToggle{
+    background: transparent; border: 1px solid var(--border-strong); border-radius: 999px;
+    padding: 9px 16px; font-size: 12px; font-weight: 700; color: var(--text-dim);
+  }
+  #sampleToggle.active{ background: var(--amber); border-color: transparent; color: oklch(20% 0.05 85); }
+
+  #sampleBanner{
+    display: none; margin-bottom: 20px; padding: 10px 16px; border-radius: 12px;
+    background: var(--amber-glow); color: var(--amber); font-size: 12.5px; font-weight: 600;
+  }
+  #sampleBanner.show{ display: block; }
+
+  .summary{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+  .sum-card{ padding: 18px 20px; }
+  .sum-num{ font-size: 30px; line-height: 1; }
+  .sum-label{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); margin-top: 6px; }
+
+  .chart-card{ padding: 24px; margin-bottom: 18px; }
+  .chart-head{ display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .chart-title{ font-size: 17px; text-transform: uppercase; }
+  .chart-sub{ font-size: 12px; color: var(--text-faint); }
+  .legend{ display: flex; gap: 14px; flex-wrap: wrap; }
+  .legend span{ display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+  .legend i{ width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  svg{ display: block; width: 100%; height: auto; }
+  svg text{ font-family: var(--font-ui); fill: var(--text-faint); font-size: 10px; }
+  .chart-empty{ padding: 34px 0; text-align: center; font-size: 13px; color: var(--text-faint); }
+
+  #empty{ text-align: center; padding: 70px 20px; color: var(--text-dim); }
+  #empty h2{ font-size: 24px; margin: 0 0 8px; text-transform: uppercase; }
+  #empty p{ font-size: 14px; margin: 0 0 22px; max-width: 420px; margin-inline: auto; }
+  #empty a{ font-weight: 700; }
+
+  footer{ padding: 40px 0; text-align: center; font-size: 12px; color: var(--text-faint); }
+
+  @media (max-width: 640px){
+    .summary{ grid-template-columns: 1fr 1fr; }
+    .nav-links a:not(.here){ display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="landing.html">
+      <div class="brand-lights"><div class="brand-dot"></div><div class="brand-dot"></div><div class="brand-dot"></div></div>
+      <span class="brand-word condensed">White Lights</span>
+    </a>
+    <nav class="nav-links">
+      <a href="live.html">Live Judge</a>
+      <a href="history.html">History</a>
+      <a class="here" href="stats.html">Stats</a>
+      <button id="themeToggle" title="Toggle theme">◐</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="page-head">
+    <div>
+      <h1 class="condensed">Stats</h1>
+      <p class="page-sub">Trends from your logged sets and attempts.</p>
+    </div>
+    <button id="sampleToggle">Preview with sample data</button>
+  </div>
+
+  <div id="sampleBanner">Showing generated sample data — nothing is written to your history. Toggle off to return to your real log.</div>
+
+  <div id="content" style="display:none">
+    <div class="summary">
+      <div class="sum-card glass"><div class="sum-num condensed num" id="sumSessions">0</div><div class="sum-label">Sessions</div></div>
+      <div class="sum-card glass"><div class="sum-num condensed num" id="sumReps">0</div><div class="sum-label">Judged reps</div></div>
+      <div class="sum-card glass"><div class="sum-num condensed num" id="sumGoodRate">—</div><div class="sum-label">Good rate</div></div>
+      <div class="sum-card glass"><div class="sum-num condensed num" id="sumBest">—</div><div class="sum-label">Heaviest set</div></div>
+    </div>
+
+    <div class="chart-card glass">
+      <div class="chart-head">
+        <div>
+          <div class="chart-title condensed">Good rate over time</div>
+          <div class="chart-sub">Share of GOOD calls per day, all lifts</div>
+        </div>
+      </div>
+      <div id="goodRateChart"></div>
+    </div>
+
+    <div class="chart-card glass">
+      <div class="chart-head">
+        <div>
+          <div class="chart-title condensed">Top weight per lift</div>
+          <div class="chart-sub">Heaviest logged training set per day</div>
+        </div>
+        <div class="legend">
+          <span><i style="background:oklch(70% 0.14 250)"></i>Squat</span>
+          <span><i style="background:oklch(70% 0.14 85)"></i>Bench</span>
+          <span><i style="background:oklch(70% 0.14 150)"></i>Deadlift</span>
+        </div>
+      </div>
+      <div id="weightChart"></div>
+    </div>
+
+    <div class="chart-card glass">
+      <div class="chart-head">
+        <div>
+          <div class="chart-title condensed">Reps per day</div>
+          <div class="chart-sub">Judged reps, stacked by verdict</div>
+        </div>
+        <div class="legend">
+          <span><i style="background:var(--green)"></i>Good</span>
+          <span><i style="background:var(--red)"></i>No lift</span>
+          <span><i style="background:var(--amber)"></i>Uncertain</span>
+        </div>
+      </div>
+      <div id="volumeChart"></div>
+    </div>
+  </div>
+
+  <div id="empty" style="display:none">
+    <h2 class="condensed">No data yet</h2>
+    <p>Stats are built from the same history the live judge writes. Log a few sets or attempts and come back — or preview the page with sample data.</p>
+    <a href="live.html">Open the Live Judge</a>
+  </div>
+
+  <footer>Charts are drawn from your browser's local history. Nothing leaves your machine.</footer>
+</main>
+
+<script>
+(function(){
+  "use strict";
+
+  /* theme */
+  var root = document.documentElement;
+  if (localStorage.getItem('wl.theme') === 'light') root.setAttribute('data-theme', 'light');
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    if (next === 'dark') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', 'light');
+    localStorage.setItem('wl.theme', next);
+  });
+
+  var HIST_KEY = 'wl.history';
+  function loadHistory(){ try{ return JSON.parse(localStorage.getItem(HIST_KEY) || '[]'); }catch(e){ return []; } }
+
+  /* ---- in-memory sample data (never persisted) ---- */
+  function sampleData(){
+    var out = [];
+    var lifts = ['squat', 'bench', 'deadlift'];
+    var base = { squat: 120, bench: 80, deadlift: 150 };
+    for (var d = 27; d >= 0; d--){
+      if (d % 7 === 3 || d % 7 === 5) continue; /* rest days */
+      var day = Date.now() - d * 864e5;
+      var l = lifts[d % 3];
+      for (var s = 0; s < 3; s++){
+        var reps = [];
+        var n = 3 + Math.floor(Math.random() * 4);
+        for (var r = 0; r < n; r++){
+          var roll = Math.random();
+          reps.push({ verdict: roll > 0.25 ? 'GOOD' : (roll > 0.08 ? 'NO_LIFT' : 'UNCERTAIN'), time: day });
+        }
+        out.unshift({
+          type: 'training', lift: l, time: day + s * 36e5,
+          weight: String(base[l] + Math.round((27 - d) * 0.6 + s * 2.5)), unit: 'kg', reps: reps
+        });
+      }
+      if (d % 9 === 0){
+        var good = Math.random() > 0.35;
+        out.unshift({ type: 'competition', lift: l, time: day + 4 * 36e5, verdict: good ? 'GOOD' : 'NO_LIFT', faults: good ? [] : ['INSUFFICIENT_DEPTH'] });
+      }
+    }
+    return out;
+  }
+
+  /* ---- aggregation ---- */
+  function liftOf(e){ return e.lift || 'squat'; }
+  function dayKey(t){ var d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+  function dayShort(t){ return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
+
+  function aggregate(list){
+    var days = {}; /* key -> { time, good, noLift, uncertain, topWeight: {lift: kg} } */
+    list.forEach(function(e){
+      var k = dayKey(e.time);
+      if (!days[k]) days[k] = { time: e.time, good: 0, noLift: 0, uncertain: 0, top: {} };
+      var d = days[k];
+      function count(v){ if (v === 'GOOD') d.good++; else if (v === 'NO_LIFT') d.noLift++; else d.uncertain++; }
+      if (e.type === 'training'){
+        (e.reps || []).forEach(function(r){ count(r.verdict); });
+        var w = parseFloat(e.weight);
+        if (!isNaN(w) && w > 0){
+          var kg = (e.unit === 'lb') ? w * 0.45359237 : w;
+          var l = liftOf(e);
+          if (!d.top[l] || kg > d.top[l]) d.top[l] = kg;
+        }
+      } else if (e.verdict){
+        count(e.verdict);
+      }
+    });
+    return Object.keys(days).map(function(k){ return days[k]; }).sort(function(a, b){ return a.time - b.time; });
+  }
+
+  /* ---- tiny SVG chart helpers ---- */
+  var NS = 'http://www.w3.org/2000/svg';
+  function el(name, attrs){
+    var n = document.createElementNS(NS, name);
+    for (var k in attrs) n.setAttribute(k, attrs[k]);
+    return n;
+  }
+  var W = 860, H = 220, PAD = { l: 38, r: 12, t: 12, b: 26 };
+  function frame(){
+    var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMid meet' });
+    for (var i = 0; i <= 4; i++){
+      var y = PAD.t + (H - PAD.t - PAD.b) * i / 4;
+      svg.appendChild(el('line', { x1: PAD.l, y1: y, x2: W - PAD.r, y2: y, stroke: 'var(--grid-line)', 'stroke-width': 1 }));
+    }
+    return svg;
+  }
+  function xPos(i, n){ return n === 1 ? (PAD.l + W - PAD.r) / 2 : PAD.l + (W - PAD.l - PAD.r) * i / (n - 1); }
+  function yPos(v, max){ return PAD.t + (H - PAD.t - PAD.b) * (1 - v / max); }
+  function xLabels(svg, days){
+    var n = days.length;
+    var step = Math.max(1, Math.ceil(n / 8));
+    days.forEach(function(d, i){
+      if (i % step !== 0 && i !== n - 1) return;
+      var t = el('text', { x: xPos(i, n), y: H - 8, 'text-anchor': 'middle' });
+      t.textContent = dayShort(d.time);
+      svg.appendChild(t);
+    });
+  }
+  function yLabels(svg, max, fmt){
+    for (var i = 0; i <= 4; i++){
+      var v = max * (1 - i / 4);
+      var t = el('text', { x: PAD.l - 6, y: PAD.t + (H - PAD.t - PAD.b) * i / 4 + 3, 'text-anchor': 'end' });
+      t.textContent = fmt(v);
+      svg.appendChild(t);
+    }
+  }
+  function linePath(pts){
+    return pts.map(function(p, i){ return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
+  }
+  function emptyNote(container, msg){
+    var d = document.createElement('div');
+    d.className = 'chart-empty'; d.textContent = msg;
+    container.appendChild(d);
+  }
+
+  /* ---- charts ---- */
+  function renderGoodRate(days){
+    var c = document.getElementById('goodRateChart'); c.innerHTML = '';
+    var pts = days.filter(function(d){ return d.good + d.noLift + d.uncertain > 0; });
+    if (pts.length < 2){ emptyNote(c, 'Need judged reps on at least two days to draw a trend.'); return; }
+    var svg = frame();
+    yLabels(svg, 100, function(v){ return Math.round(v) + '%'; });
+    xLabels(svg, pts);
+    var coords = pts.map(function(d, i){
+      var total = d.good + d.noLift + d.uncertain;
+      return [xPos(i, pts.length), yPos(d.good / total * 100, 100)];
+    });
+    svg.appendChild(el('path', { d: linePath(coords), fill: 'none', stroke: 'var(--green)', 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+    coords.forEach(function(p){ svg.appendChild(el('circle', { cx: p[0], cy: p[1], r: 3.5, fill: 'var(--green)' })); });
+    c.appendChild(svg);
+  }
+
+  var LIFT_COLORS = { squat: 'oklch(70% 0.14 250)', bench: 'oklch(70% 0.14 85)', deadlift: 'oklch(70% 0.14 150)' };
+  function renderWeights(days){
+    var c = document.getElementById('weightChart'); c.innerHTML = '';
+    var pts = days.filter(function(d){ return Object.keys(d.top).length; });
+    if (pts.length < 2){ emptyNote(c, 'Log weighted training sets on at least two days to see this chart.'); return; }
+    var max = 0;
+    pts.forEach(function(d){ for (var l in d.top) max = Math.max(max, d.top[l]); });
+    max = Math.ceil(max / 20) * 20 || 20;
+    var svg = frame();
+    yLabels(svg, max, function(v){ return Math.round(v) + 'kg'; });
+    xLabels(svg, pts);
+    ['squat', 'bench', 'deadlift'].forEach(function(l){
+      var coords = [];
+      pts.forEach(function(d, i){ if (d.top[l] !== undefined) coords.push([xPos(i, pts.length), yPos(d.top[l], max)]); });
+      if (coords.length < 1) return;
+      if (coords.length > 1) svg.appendChild(el('path', { d: linePath(coords), fill: 'none', stroke: LIFT_COLORS[l], 'stroke-width': 2.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }));
+      coords.forEach(function(p){ svg.appendChild(el('circle', { cx: p[0], cy: p[1], r: 3.5, fill: LIFT_COLORS[l] })); });
+    });
+    c.appendChild(svg);
+  }
+
+  function renderVolume(days){
+    var c = document.getElementById('volumeChart'); c.innerHTML = '';
+    var pts = days.filter(function(d){ return d.good + d.noLift + d.uncertain > 0; });
+    if (!pts.length){ emptyNote(c, 'No judged reps yet.'); return; }
+    var max = 0;
+    pts.forEach(function(d){ max = Math.max(max, d.good + d.noLift + d.uncertain); });
+    max = Math.ceil(max / 5) * 5 || 5;
+    var svg = frame();
+    yLabels(svg, max, function(v){ return String(Math.round(v)); });
+    xLabels(svg, pts);
+    var n = pts.length;
+    var slot = (W - PAD.l - PAD.r) / n;
+    var bw = Math.min(26, slot * 0.55);
+    pts.forEach(function(d, i){
+      var x = PAD.l + slot * i + (slot - bw) / 2;
+      var y = H - PAD.b;
+      [['good', 'var(--green)'], ['noLift', 'var(--red)'], ['uncertain', 'var(--amber)']].forEach(function(seg){
+        var v = d[seg[0]];
+        if (!v) return;
+        var h = (H - PAD.t - PAD.b) * v / max;
+        y -= h;
+        svg.appendChild(el('rect', { x: x, y: y, width: bw, height: h, rx: 2, fill: seg[1] }));
+      });
+    });
+    c.appendChild(svg);
+  }
+
+  function render(list){
+    var content = document.getElementById('content');
+    var empty = document.getElementById('empty');
+    if (!list.length){ content.style.display = 'none'; empty.style.display = 'block'; return; }
+    content.style.display = 'block'; empty.style.display = 'none';
+
+    var days = aggregate(list);
+    var reps = 0, good = 0, best = 0, bestLift = '';
+    days.forEach(function(d){
+      reps += d.good + d.noLift + d.uncertain;
+      good += d.good;
+      for (var l in d.top){ if (d.top[l] > best){ best = d.top[l]; bestLift = l; } }
+    });
+    document.getElementById('sumSessions').textContent = days.length;
+    document.getElementById('sumReps').textContent = reps;
+    document.getElementById('sumGoodRate').textContent = reps ? Math.round(good / reps * 100) + '%' : '—';
+    document.getElementById('sumBest').textContent = best ? Math.round(best) + 'kg ' + bestLift : '—';
+
+    renderGoodRate(days);
+    renderWeights(days);
+    renderVolume(days);
+  }
+
+  /* ---- sample toggle (in-memory only) ---- */
+  var sampleOn = false;
+  var sampleBtn = document.getElementById('sampleToggle');
+  sampleBtn.addEventListener('click', function(){
+    sampleOn = !sampleOn;
+    sampleBtn.classList.toggle('active', sampleOn);
+    sampleBtn.textContent = sampleOn ? 'Sample data on' : 'Preview with sample data';
+    document.getElementById('sampleBanner').classList.toggle('show', sampleOn);
+    render(sampleOn ? sampleData() : loadHistory());
+  });
+
+  render(loadHistory());
+})();
+</script>
+</body>
+</html>

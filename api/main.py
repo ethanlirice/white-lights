@@ -55,6 +55,33 @@ def live_page() -> FileResponse:
     return FileResponse(WEB_DIR / "live.html")
 
 
+# The multi-page UI (landing / live / history / stats) links between pages with
+# relative `*.html` hrefs; serve those, plus clean `/landing|/history|/stats`.
+_PAGES = frozenset({"index", "live", "landing", "history", "stats"})
+
+
+@app.get("/{page}.html", include_in_schema=False)
+def page_html(page: str) -> FileResponse:
+    if page not in _PAGES:
+        raise HTTPException(status_code=404, detail="page not found")
+    return FileResponse(WEB_DIR / f"{page}.html")
+
+
+@app.get("/landing", include_in_schema=False)
+def landing_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "landing.html")
+
+
+@app.get("/history", include_in_schema=False)
+def history_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "history.html")
+
+
+@app.get("/stats", include_in_schema=False)
+def stats_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "stats.html")
+
+
 def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height: int) -> dict:
     """Build the per-frame JSON the browser renders (see web/live.html + HANDOFF.md).
 
@@ -71,19 +98,21 @@ def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height
     verdict = None
     if status.rep_completed and status.last_verdict is not None:
         verdict = status.last_verdict.model_dump(mode="json")
+    progress = max(0.0, min(1.0, status.descent_fraction or 0.0))
     return {
         "state": str(status.state),
         # Generic per-lift "key checkpoint met" (squat: below parallel; bench: bar
-        # on chest; deadlift: locked). Kept under `below_parallel` for the current
-        # depth-lamp; also sent as `checkpoint` for the generic checkpoint light.
+        # on chest; deadlift: locked) drives the checkpoint light. `below_parallel`
+        # / `depth_progress` are legacy aliases the UI falls back to.
+        "checkpoint_met": status.checkpoint,
         "below_parallel": status.checkpoint,
-        "checkpoint": status.checkpoint,
-        "depth_progress": max(0.0, min(1.0, status.descent_fraction or 0.0)),
+        "lift_progress": progress,
+        "depth_progress": progress,
         "rep_completed": status.rep_completed,
         "verdict": verdict,
         "note": status.note,
         "keypoints": keypoints or None,
-        "command": status.command,  # e.g. SQUAT / PRESS / RACK / DOWN, else None
+        "command": status.command,  # e.g. SQUAT / START / PRESS / RACK / DOWN, else None
     }
 
 
