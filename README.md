@@ -1,4 +1,4 @@
-# White Lights 🤍
+# White Lights 
 
 **Real-time computer-vision powerlifting judge.** Point a webcam at the platform
 and White Lights calls each lift — **GOOD**, **NO&nbsp;LIFT**, or **UNCERTAIN** —
