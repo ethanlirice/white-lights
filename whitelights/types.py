@@ -168,6 +168,9 @@ class Fault(StrEnum):
     # Bench press
     EARLY_PRESS = "EARLY_PRESS"  # pressed off the chest before the "Press!" command
     BAR_NOT_TO_CHEST = "BAR_NOT_TO_CHEST"  # bar not lowered to the chest
+    # Deadlift
+    EARLY_DOWN = "EARLY_DOWN"  # lowered the bar before the "Down!" command
+    HITCHING = "HITCHING"  # ramped/hitched the bar up the thighs (not yet detected)
 
 
 class RepVerdict(BaseModel):
