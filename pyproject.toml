@@ -31,10 +31,11 @@ api = [
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",
 ]
-# Test + lint. httpx powers FastAPI's TestClient.
+# Test + lint. httpx powers FastAPI's TestClient. ruff is pinned so CI's
+# format/lint results match local exactly (avoids "clean locally, fails CI").
 dev = [
     "pytest>=8.0",
-    "ruff>=0.6",
+    "ruff==0.15.21",
     "httpx>=0.27",
 ]
 
