@@ -1,85 +1,106 @@
-# White Lights
+# White Lights 🤍
 
-Real-time computer-vision powerlifting judge. Open the live web app, point your
-webcam at the platform, and White Lights calls each lift — **GOOD**, **NO_LIFT**,
-or **UNCERTAIN** — against the federation rules, in real time, with the specific
-fault(s) flagged.
+**Real-time computer-vision powerlifting judge.** Point a webcam at the platform
+and White Lights calls each lift — **GOOD**, **NO&nbsp;LIFT**, or **UNCERTAIN** —
+against the federation rulebook, live, with the exact fault flagged and (in
+competition mode) the referee commands issued by the computer itself.
 
-> **▶︎ Live UI demo (in your browser, nothing to install):**
-> **https://ethanlirice.github.io/white-lights/**
->
-> ⚠️ **This hosted link is a UI demo only — it does _not_ judge real movement.**
-> GitHub Pages can't run the pose model, so the page falls back to a built-in
-> **simulator** that plays canned data to show off the interface. The actual
-> judging (real webcam → YOLO pose → live verdicts) only runs when you start the
-> **backend locally** — see [Run](#run) below.
+[![CI](https://github.com/ethanlirice/white-lights/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanlirice/white-lights/actions/workflows/ci.yml)
+[![tests](https://img.shields.io/badge/tests-99%20passing-brightgreen)](tests/)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![ruff](https://img.shields.io/badge/lint-ruff-261230)](https://docs.astral.sh/ruff/)
 
-**Two modes:**
+> **▶︎ [Live UI demo](https://ethanlirice.github.io/white-lights/)** — runs in your
+> browser, nothing to install.
+> ⚠️ The hosted link is a **UI demo only**: GitHub Pages can't run the pose model,
+> so it plays a built-in **simulator**. Real judging (webcam → YOLO → verdicts)
+> runs when you start the backend locally or deploy it — see
+> [Run](#run) and [docs/DEPLOY.md](docs/DEPLOY.md).
 
-- 🏋️ **Training** — free reps: pick a weight, start a set, get a live
-  GOOD / NO_LIFT call on every rep, and log your set history (stored in the
-  browser, exportable to JSON).
-- 🏆 **Competition** — the computer plays referee: it waits for a still,
-  locked-out setup, issues the **SQUAT** / **RACK** commands itself, and judges
-  the single attempt on the full rulebook — depth, downward movement,
-  early-descent / early-rack, and lockout — with a "three white lights" reveal.
+<!-- Add a hero GIF here: drag a screen recording of /live into this README on github.com -->
 
-Under the hood: real-time pose → depth / lockout / motion analysis → a
-referee-command state machine, streamed over a browser ↔ FastAPI WebSocket.
-Squat is fully implemented; **bench press and deadlift are in progress**. When
-a call is genuinely borderline it returns **UNCERTAIN** ("too close to call")
-rather than forcing a guess. See [DESIGN.md](DESIGN.md).
+---
 
-## What it judges
+## What it does
 
-A legal squat is a "command sandwich": the lifter sets up erect and locked,
-receives the **"Squat!"** command, descends until the **hip crease is below the
-top of the knee**, ascends without any downward movement, locks out, and returns
-the bar on the **"Rack!"** command. White Lights targets these failure modes,
-implemented incrementally: insufficient depth (primary), downward movement on the
-ascent, command-timing violations, and postural/foot faults.
+Two modes, three lifts (**squat** fully live; **bench** and **deadlift** working
+drafts):
+
+- 🏋️ **Training** — free reps: pick a weight, start a set, get a live GOOD /
+  NO&nbsp;LIFT call on every rep, log your set history (in-browser, exportable).
+- 🏆 **Competition** — the computer plays referee: it detects a still, locked-out
+  setup, **issues the commands itself** (`SQUAT`/`RACK`, `START`/`PRESS`/`RACK`,
+  or `DOWN`), judges the single attempt against the full rulebook, and gives a
+  "three white lights" verdict.
+
+Faults detected: insufficient depth, downward movement, early-descent /
+early-press / early-rack / early-down, incomplete lockout, foot movement,
+bar-not-to-chest. When a call is genuinely borderline it returns **UNCERTAIN**
+("too close to call") rather than faking a confident call.
 
 ## Architecture
 
-```
-                 ┌──────────────┐   one video per camera view
-   video(s) ───► │  pose.py     │   YOLO11-pose → per-frame 2D keypoints
-                 │  (done)      │   + confidences, per camera
-                 └──────┬───────┘
-                        │  PoseSequence  (2D, per camera)
-                 ┌──────▼───────┐
-                 │ smoothing.py │   gap-fill + confidence gate       [done*]
-                 └──────┬───────┘
-                        │  PoseSequence  (2D, cleaned)
-                 ┌──────▼───────┐
-                 │  fusion.py   │   1 view → 3D lift                 [done†]
-                 └──────┬───────┘
-                        │  Pose3DSequence  (world coords, +z up)
-                 ┌──────▼───────┐
-                 │  depth.py    │   per-frame below-parallel + gating [done]
-                 └──────┬───────┘
-                        │  list[DepthFrameResult]
-                 ┌──────▼───────┐
-                 │   reps.py    │   segment → one verdict/rep        [done‡]
-                 └──────┬───────┘
-                        │  list[RepVerdict]
-                 ┌──────▼───────┐
-                 │ api/main.py  │   FastAPI: POST /judge, GET /
-                 └──────────────┘
+Real-time pipeline: the browser captures + downscales frames and streams them
+over a **WebSocket** to an **async FastAPI** server, which runs pose estimation
+off the event loop (in a threadpool) and feeds an **online, causal state machine**
+that judges the lift and streams a verdict back to a canvas overlay.
 
-  Orchestrated by whitelights/pipeline.py. Shared types in whitelights/types.py.
-
-  * smoothing: gap-fill done; genuine jitter reduction (One-Euro/Kalman) deferred.
-  † fusion: single-camera lift done; multi-view triangulation raises (v2.3+).
-  ‡ reps: depth verdict done; downward-movement (v2.1) + command-timing (v2.2) deferred.
+```mermaid
+flowchart LR
+  subgraph Browser
+    CAM["Webcam capture<br/>↓ downscale 480px"]
+    RENDER["Canvas overlay +<br/>reasoning panel"]
+  end
+  subgraph Server["Server · async FastAPI"]
+    WS["/ws/live<br/>(WebSocket)"]
+    POOL["threadpool<br/>(non-blocking)"]
+    POSE["YOLO11-pose"]
+    PIPE["smoothing → single-view 3D lift<br/>→ depth / lockout / motion"]
+    JUDGE["online judge<br/>(state machine per lift × mode)"]
+  end
+  CAM -->|JPEG frames| WS --> POOL --> POSE --> PIPE --> JUDGE
+  JUDGE -->|"JSON: state · checkpoint ·<br/>command · verdict · keypoints"| WS --> RENDER
 ```
 
-- **`whitelights/`** — core package (`pose`, `smoothing`, `fusion`, `depth`,
-  `reps`, `pipeline`, `types`).
-- **`api/`** — FastAPI app (`POST /judge`, `GET /`).
-- **`web/`** — single static HTML+JS upload page.
-- **`tests/`** — pytest suite with synthetic keypoint fixtures.
-- **`eval/`** — validation harness (`validate.py`).
+The same core logic also runs as a **batch pipeline** (`POST /judge` on a video
+file) — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full data flow,
+module map, and the design decisions behind it.
+
+## Design highlights
+
+- **Real-time streaming, non-blocking.** Backpressured WebSocket (one frame in
+  flight); CPU-bound YOLO inference is offloaded to a threadpool so the async
+  event loop never stalls.
+- **Batch *and* online.** The IPF rulebook is expressed once and runs both as a
+  whole-clip batch pipeline and as causal, frame-by-frame state machines for live
+  judging.
+- **Generic lift abstraction.** Squat / bench / deadlift share the machinery
+  (stillness, joint-angle lockout, downward-movement, command sandwich); each lift
+  is a small config of signal + checkpoint + command sequence.
+- **Designed around model uncertainty.** Confidence-gating, a first-class
+  **UNCERTAIN** verdict, per-lifter lockout calibration, and IPF/USAPL strictness
+  profiles — because a pose estimator's "locked out" is never a clean 180°.
+- **Tested & typed.** 99 tests over deterministic synthetic-keypoint fixtures,
+  full type hints, CI (ruff + pytest) on every push.
+
+## Tech stack
+
+**Python 3.11** · **FastAPI** + WebSockets · **Ultralytics YOLO11-pose** (PyTorch)
+· **OpenCV** · **Pydantic v2** · **NumPy** · vanilla-JS + Canvas frontend ·
+**pytest** · **ruff** · GitHub Actions (CI + Pages).
+
+## Project layout
+
+```
+whitelights/   core package — pose, smoothing, fusion, depth, reps, posture,
+               live (online trackers), bench, deadlift, judges, pipeline, types
+api/           FastAPI app: /live, /judge, WebSocket /ws/live, pages
+web/           frontend — live.html (multi-lift judge), landing/history/stats
+tests/         99-test pytest suite + synthetic keypoint fixtures
+eval/          validation harness (agreement %, confusion matrix, latency)
+docs/          ARCHITECTURE, DEPLOY, DESIGN, ROADMAP
+```
 
 ## Setup
 
@@ -87,55 +108,45 @@ Requires Python 3.11+.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-
-# Full local install (pose model + API + dev tools):
-pip install -e ".[cv,api,dev]"
-
-# Lighter installs also work:
-#   pip install -e ".[api,dev]"   # everything except the pose model (torch/opencv)
-#   pip install -e ".[dev]"       # types + tests only
+pip install -e ".[cv,api,dev]"      # pose model + API + dev tools
 ```
 
-Dependencies are split into extras so tests and CI stay fast: `cv`
-(ultralytics + opencv, pulls torch), `api` (fastapi + uvicorn), `dev` (pytest +
-ruff). The YOLO11-pose weights (`yolo11n-pose.pt`) auto-download on first run.
+Dependencies are split into extras so tests/CI stay fast: `cv` (ultralytics +
+opencv, pulls torch), `api` (fastapi + uvicorn), `dev` (pytest + ruff). The
+`yolo11n-pose.pt` weights auto-download on first run.
 
 ## Run
 
-**This is the real, working judge** — the hosted GitHub Pages link is a
-simulated UI demo only. Run the backend locally, then open `/live` in your
-browser for actual webcam judging (needs the `cv` extra so the pose model runs).
+**This is the real, working judge** — the hosted Pages link is a simulated demo.
 
 ```bash
-# API + web UI  →  http://127.0.0.1:8000
-uvicorn api.main:app
-#   /       upload a clip for batch judging
-#   /live   live webcam judge — the real thing (real-time; needs the cv extra)
-# (avoid `--reload` here: it watches the whole .venv and thrashes on torch's files)
-
-# Live webcam judge in a terminal window (OpenCV), instead of the browser:
-python -m whitelights.live --camera 1     # try 1/2 to pick the built-in camera
-
-# Tests (deferred-feature contracts xfail by design)
-pytest
-
-# Lint
-ruff check .
-
-# Validation harness (once labelled clips exist)
-python -m eval.validate --clips-dir data/labelled --labels data/labels.csv
+uvicorn api.main:app                 # → http://127.0.0.1:8000/live
 ```
 
-A **single-camera** upload now runs the full v2.0 pipeline and returns per-rep
-verdicts as JSON (requires the `cv` extra so the pose model can run). A
-**multi-camera** upload returns **HTTP 501** — real triangulation is not built
-yet (v2.3+); without the `cv` extra installed, `/judge` returns **HTTP 503** with
-an install hint.
+Open **`/live`**, allow the camera, pick your lift + mode, and go. (Avoid
+`--reload` — it watches the whole `.venv` and thrashes on torch's files.)
 
-## Metrics
+```bash
+pytest                               # 99 tests
+ruff check . && ruff format --check .
+python -m eval.validate --clips-dir data/clips --labels data/labels.csv
+```
 
-v1 was validated at **91% agreement on 5,000+ reps under competition
-conditions**. v2 is a rebuild and **revalidation is in progress** — no v2
-performance numbers are claimed yet. The `eval/` harness is how v2 will be
-measured (agreement %, per-class breakdown, latency) once labelled clips and the
-core logic are in place.
+There's also a terminal-only OpenCV judge: `python -m whitelights.live`.
+
+## Deploy
+
+The whole app (pages + WebSocket) serves from one FastAPI process, so it deploys
+as a single container. A `Dockerfile` (model baked in) is included and works
+free on Hugging Face Spaces — see **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
+## Status & metrics
+
+v1 was validated at **91% agreement on 5,000+ reps under competition conditions**;
+v2 is this ground-up rebuild and **revalidation is in progress** — no v2 accuracy
+numbers are claimed yet. The `eval/` harness is how v2 gets measured once labelled
+clips exist. Roadmap: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+
+## License
+
+[MIT](LICENSE)
