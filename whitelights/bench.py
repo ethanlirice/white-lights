@@ -293,6 +293,7 @@ class BenchTracker:
             state=self.state,
             note=note,
             below_parallel=None,
+            checkpoint=self._cand.reached_chest,  # bench checkpoint: bar reached the chest
             depth_margin=None,
             hip_z=wrist,
             standing_ref=self._top_z,

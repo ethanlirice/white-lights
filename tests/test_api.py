@@ -44,6 +44,7 @@ def test_live_payload_normalises_keypoints_and_verdict() -> None:
         state=LiveState.DESCENDING,
         note="descending…",
         below_parallel=False,
+        checkpoint=False,
         depth_margin=-3.0,
         hip_z=-120.0,
         standing_ref=-40.0,
@@ -68,6 +69,7 @@ def test_live_payload_normalises_keypoints_and_verdict() -> None:
     assert kp["x"] == 0.5 and kp["y"] == 0.5
     assert payload["state"] == "DESCENDING"
     assert payload["depth_progress"] == 0.5
+    assert payload["checkpoint"] is False and payload["below_parallel"] is False
     # verdict is populated because rep_completed is True
     assert payload["verdict"]["verdict"] == "NO_LIFT"
 
@@ -119,6 +121,14 @@ def test_ws_live_switches_to_competition_mode() -> None:
     # the socket keeps working.
     with client.websocket_connect("/ws/live") as ws:
         ws.send_text('{"cmd": "start", "mode": "competition"}')
+        ws.send_bytes(b"x")
+        assert "error" in ws.receive_json()
+
+
+def test_ws_live_switches_lift() -> None:
+    # Selecting a different lift routes to that lift's tracker (no cv needed).
+    with client.websocket_connect("/ws/live") as ws:
+        ws.send_text('{"cmd": "start", "lift": "deadlift", "mode": "competition"}')
         ws.send_bytes(b"x")
         assert "error" in ws.receive_json()
 

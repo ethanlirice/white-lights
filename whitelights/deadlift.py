@@ -177,7 +177,7 @@ class DeadliftTracker:
             else:
                 note = "hold it — wait for the down command"
 
-        return self._status(bar, note, command=cmd, scale=scale)
+        return self._status(bar, note, command=cmd, scale=scale, checkpoint=locked)
 
     # -- helpers -------------------------------------------------------------
 
@@ -244,6 +244,7 @@ class DeadliftTracker:
         *,
         command: str | None = None,
         scale: float | None = None,
+        checkpoint: bool | None = None,
     ) -> LiveStatus:
         frac = None
         if bar is not None and self._floor is not None and scale:
@@ -252,6 +253,7 @@ class DeadliftTracker:
             state=self.state,
             note=note,
             below_parallel=None,
+            checkpoint=checkpoint,  # deadlift checkpoint: locked out (knees + hips straight)
             depth_margin=None,
             hip_z=bar,
             standing_ref=self._floor,
