@@ -68,8 +68,8 @@ def test_live_payload_normalises_keypoints_and_verdict() -> None:
     kp = next(k for k in payload["keypoints"] if k["name"] == "left_hip")
     assert kp["x"] == 0.5 and kp["y"] == 0.5
     assert payload["state"] == "DESCENDING"
-    assert payload["depth_progress"] == 0.5
-    assert payload["checkpoint"] is False and payload["below_parallel"] is False
+    assert payload["depth_progress"] == 0.5 and payload["lift_progress"] == 0.5
+    assert payload["checkpoint_met"] is False and payload["below_parallel"] is False
     # verdict is populated because rep_completed is True
     assert payload["verdict"]["verdict"] == "NO_LIFT"
 

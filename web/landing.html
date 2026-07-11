@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>White Lights — Real-time Powerlifting Judge</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg: oklch(16% 0.012 260);
+    --bg-2: oklch(12% 0.012 260);
+    --panel: oklch(20% 0.012 260 / 0.62);
+    --panel-solid: oklch(20% 0.012 260);
+    --border: oklch(100% 0 0 / 0.09);
+    --border-strong: oklch(100% 0 0 / 0.18);
+    --text: oklch(96% 0.004 90);
+    --text-dim: oklch(96% 0.004 90 / 0.58);
+    --text-faint: oklch(96% 0.004 90 / 0.34);
+    --red: oklch(58% 0.19 25);
+    --red-glow: oklch(58% 0.19 25 / 0.55);
+    --green: oklch(70% 0.17 150);
+    --green-glow: oklch(70% 0.17 150 / 0.55);
+    --amber: oklch(78% 0.15 85);
+    --amber-glow: oklch(78% 0.15 85 / 0.5);
+    --white-lamp: oklch(98% 0 0);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.7);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-condensed: "Arial Narrow", "Helvetica Neue Condensed", "Roboto Condensed", var(--font-ui);
+    --radius: 18px;
+  }
+  :root[data-theme="light"]{
+    color-scheme: light;
+    --bg: oklch(96% 0.005 90);
+    --bg-2: oklch(92% 0.006 90);
+    --panel: oklch(99% 0.004 90 / 0.72);
+    --panel-solid: oklch(99% 0.004 90);
+    --border: oklch(0% 0 0 / 0.08);
+    --border-strong: oklch(0% 0 0 / 0.16);
+    --text: oklch(20% 0.01 260);
+    --text-dim: oklch(20% 0.01 260 / 0.62);
+    --text-faint: oklch(20% 0.01 260 / 0.38);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.25);
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin: 0; }
+  body{
+    background: var(--bg); color: var(--text); font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased; line-height: 1.5;
+  }
+  a{ color: var(--text); }
+  a:hover{ color: var(--text-dim); }
+  button{ cursor: pointer; font-family: inherit; color: inherit; }
+  .condensed{ font-family: var(--font-condensed); font-stretch: condensed; font-weight: 800; letter-spacing: -0.01em; }
+  .glass{
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+    backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4);
+    box-shadow: var(--shadow);
+  }
+  .wrap{ max-width: 1060px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- nav ---------- */
+  header{
+    position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border);
+    background: color-mix(in oklch, var(--bg) 82%, transparent);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  }
+  .nav{ display: flex; align-items: center; justify-content: space-between; padding: 14px 0; gap: 16px; }
+  .brand{ display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand-lights{ display: flex; gap: 5px; }
+  .brand-dot{ width: 8px; height: 8px; border-radius: 50%; background: var(--white-lamp); box-shadow: 0 0 8px 1px oklch(100% 0 0 / 0.5); }
+  .brand-word{ font-size: 15px; text-transform: uppercase; }
+  .nav-links{ display: flex; align-items: center; gap: 4px; }
+  .nav-links a{
+    text-decoration: none; font-size: 13px; font-weight: 600; color: var(--text-dim);
+    padding: 8px 12px; border-radius: 999px;
+  }
+  .nav-links a:hover{ color: var(--text); background: oklch(50% 0 0 / 0.12); }
+  .nav-cta{
+    background: var(--text) !important; color: var(--bg-2) !important; font-weight: 700 !important;
+    padding: 9px 18px !important; text-transform: uppercase; letter-spacing: 0.03em; font-size: 12px !important;
+  }
+  #themeToggle{ background: transparent; border: 0; font-size: 16px; padding: 8px 10px; line-height: 1; }
+
+  /* ---------- hero ---------- */
+  .hero{ text-align: center; padding: 96px 0 72px; }
+  .hero-lights{ display: flex; gap: 18px; justify-content: center; margin-bottom: 30px; }
+  .hero-lamp{
+    width: 34px; height: 34px; border-radius: 50%;
+    background: var(--white-lamp); box-shadow: 0 0 28px 6px oklch(100% 0 0 / 0.5);
+    animation: settle 1.2s ease both;
+  }
+  .hero-lamp:nth-child(2){ animation-delay: .18s; }
+  .hero-lamp:nth-child(3){ animation-delay: .36s; }
+  @keyframes settle{ from{ transform: scale(0.6); opacity: 0; box-shadow: none; } }
+  .hero h1{ font-size: clamp(44px, 7vw, 84px); line-height: 0.98; margin: 0 0 18px; text-transform: uppercase; }
+  .hero p{ font-size: 17px; color: var(--text-dim); max-width: 560px; margin: 0 auto 34px; text-wrap: pretty; }
+  .cta-row{ display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn-primary{
+    background: var(--text); color: var(--bg-2); border: 0; border-radius: 999px;
+    padding: 15px 32px; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+    text-decoration: none; display: inline-block;
+  }
+  .btn-primary:hover{ color: var(--bg-2); opacity: 0.9; }
+  .btn-secondary{
+    background: transparent; color: var(--text-dim); border: 1px solid var(--border-strong); border-radius: 999px;
+    padding: 15px 32px; font-size: 14px; font-weight: 700; text-decoration: none; display: inline-block;
+  }
+  .hero-note{ margin-top: 22px; font-size: 12px; color: var(--text-faint); }
+
+  /* ---------- sections ---------- */
+  section{ padding: 56px 0; }
+  .sec-label{ font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-faint); margin-bottom: 10px; }
+  h2{ font-size: clamp(26px, 3.6vw, 38px); margin: 0 0 12px; text-transform: uppercase; }
+  .sec-intro{ color: var(--text-dim); max-width: 620px; margin: 0 0 36px; font-size: 15px; text-wrap: pretty; }
+
+  /* lifts */
+  .lift-grid{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .lift-card{ padding: 26px 24px; display: flex; flex-direction: column; gap: 14px; }
+  .lift-name{ font-size: 24px; text-transform: uppercase; }
+  .lift-desc{ font-size: 13px; color: var(--text-dim); margin: 0; min-height: 60px; }
+  .lift-meta{ display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 14px; }
+  .meta-label{ font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); }
+  .cmd-rail{ display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .cmd-chip{
+    font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 4px 10px; border-radius: 999px; background: oklch(50% 0 0 / 0.14); color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+  .cmd-sep{ color: var(--text-faint); font-size: 10px; }
+  .checkpoint-line{ display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+  .cp-dot{ width: 10px; height: 10px; border-radius: 50%; background: var(--white-lamp); box-shadow: 0 0 8px oklch(100% 0 0 / 0.5); flex: none; }
+
+  /* modes */
+  .mode-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .mode-panel{ padding: 30px 28px; }
+  .mode-tag{
+    display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+    padding: 5px 12px; border-radius: 999px; background: var(--text); color: var(--bg-2); margin-bottom: 16px;
+  }
+  .mode-panel h3{ font-size: 22px; margin: 0 0 10px; text-transform: uppercase; }
+  .mode-panel p{ font-size: 14px; color: var(--text-dim); margin: 0; }
+
+  /* how it works */
+  .steps{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .step{ padding: 22px 20px; }
+  .step-num{ font-size: 26px; color: var(--text-faint); margin-bottom: 10px; }
+  .step h4{ font-size: 14px; margin: 0 0 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .step p{ font-size: 12.5px; color: var(--text-dim); margin: 0; }
+
+  /* verdicts */
+  .verdict-row{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .verdict-card{ padding: 24px; display: flex; flex-direction: column; gap: 10px; }
+  .badge{ font-size: 11px; font-weight: 800; letter-spacing: 0.06em; padding: 4px 12px; border-radius: 999px; text-transform: uppercase; align-self: flex-start; }
+  .badge.GOOD{ background: var(--green-glow); color: var(--green); }
+  .badge.NO_LIFT{ background: var(--red-glow); color: var(--red); }
+  .badge.UNCERTAIN{ background: var(--amber-glow); color: var(--amber); }
+  .verdict-card p{ font-size: 13px; color: var(--text-dim); margin: 0; }
+
+  /* demo note */
+  .demo-note{
+    padding: 22px 26px; display: flex; gap: 16px; align-items: flex-start;
+    border-left: 3px solid var(--amber);
+  }
+  .demo-note p{ font-size: 13.5px; color: var(--text-dim); margin: 0; }
+  .demo-note code{ font-size: 12px; background: oklch(50% 0 0 / 0.15); padding: 2px 6px; border-radius: 6px; }
+
+  footer{ border-top: 1px solid var(--border); padding: 34px 0 44px; margin-top: 40px; }
+  .foot{ display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .foot-links{ display: flex; gap: 18px; }
+  .foot a{ font-size: 13px; color: var(--text-dim); text-decoration: none; }
+  .foot a:hover{ color: var(--text); }
+  .foot-small{ font-size: 12px; color: var(--text-faint); }
+
+  @media (max-width: 860px){
+    .lift-grid, .verdict-row{ grid-template-columns: 1fr; }
+    .steps{ grid-template-columns: 1fr 1fr; }
+    .mode-grid{ grid-template-columns: 1fr; }
+    .hero{ padding: 64px 0 48px; }
+    .nav-links a:not(.nav-cta){ display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="landing.html">
+      <div class="brand-lights"><div class="brand-dot"></div><div class="brand-dot"></div><div class="brand-dot"></div></div>
+      <span class="brand-word condensed">White Lights</span>
+    </a>
+    <nav class="nav-links">
+      <a href="history.html">History</a>
+      <a href="stats.html">Stats</a>
+      <a href="index.html">Upload a Clip</a>
+      <button id="themeToggle" title="Toggle theme">◐</button>
+      <a class="nav-cta" href="live.html">Open Live Judge</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="hero">
+    <div class="hero-lights">
+      <div class="hero-lamp"></div><div class="hero-lamp"></div><div class="hero-lamp"></div>
+    </div>
+    <h1 class="condensed">Three white lights,<br/>every session.</h1>
+    <p>White Lights watches your squat, bench, and deadlift through a webcam and calls every rep against federation rules — depth, touch, lockout, and referee commands — in real time.</p>
+    <div class="cta-row">
+      <a class="btn-primary" href="live.html">Open the Live Judge</a>
+      <a class="btn-secondary" href="index.html">Judge a recorded clip</a>
+    </div>
+    <div class="hero-note">Runs locally. Your video never leaves your machine.</div>
+  </div>
+
+  <section id="lifts">
+    <div class="sec-label">The three lifts</div>
+    <h2 class="condensed">One judge, three rulebooks</h2>
+    <p class="sec-intro">Each lift is judged on its own checkpoint and its own referee command sequence — the same signal lamp and progress bar, tuned to the rules of the movement.</p>
+    <div class="lift-grid">
+      <div class="lift-card glass">
+        <div class="lift-name condensed">Squat</div>
+        <p class="lift-desc">The hip crease must break below the top of the knee, with no downward movement on the ascent, framed by the referee's commands.</p>
+        <div class="lift-meta">
+          <div class="meta-label">Commands</div>
+          <div class="cmd-rail"><span class="cmd-chip">Squat</span><span class="cmd-sep">›</span><span class="cmd-chip">Rack</span></div>
+          <div class="meta-label">Key checkpoint</div>
+          <div class="checkpoint-line"><span class="cp-dot"></span>Depth — hip below the knee line</div>
+        </div>
+      </div>
+      <div class="lift-card glass">
+        <div class="lift-name condensed">Bench</div>
+        <p class="lift-desc">The bar must come to a motionless touch on the chest, then press to full elbow lockout — three commands frame the attempt.</p>
+        <div class="lift-meta">
+          <div class="meta-label">Commands</div>
+          <div class="cmd-rail"><span class="cmd-chip">Start</span><span class="cmd-sep">›</span><span class="cmd-chip">Press</span><span class="cmd-sep">›</span><span class="cmd-chip">Rack</span></div>
+          <div class="meta-label">Key checkpoints</div>
+          <div class="checkpoint-line"><span class="cp-dot"></span>Chest touch, then elbow lockout</div>
+        </div>
+      </div>
+      <div class="lift-card glass">
+        <div class="lift-name condensed">Deadlift</div>
+        <p class="lift-desc">Pull to a standing lockout — knees straight, shoulders back — and hold it until the single command to return the bar.</p>
+        <div class="lift-meta">
+          <div class="meta-label">Command</div>
+          <div class="cmd-rail"><span class="cmd-chip">Down</span></div>
+          <div class="meta-label">Key checkpoint</div>
+          <div class="checkpoint-line"><span class="cp-dot"></span>Standing lockout</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="modes">
+    <div class="sec-label">Two ways to train</div>
+    <h2 class="condensed">Training and competition</h2>
+    <div class="mode-grid">
+      <div class="mode-panel glass">
+        <span class="mode-tag">Training Mode</span>
+        <h3 class="condensed">Free reps, every rep called</h3>
+        <p>Pick a weight, start a set, and get a live GOOD or NO LIFT call on every rep with the specific fault flagged. Sets are logged to your browser history — exportable to JSON.</p>
+      </div>
+      <div class="mode-panel glass">
+        <span class="mode-tag">Competition Mode</span>
+        <h3 class="condensed">The computer plays referee</h3>
+        <p>Set up still and locked out. The system issues the real referee commands for your lift, judges the single attempt on the full rulebook, and reveals the verdict as three lights.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="sec-label">Under the hood</div>
+    <h2 class="condensed">How a rep gets judged</h2>
+    <div class="steps">
+      <div class="step glass">
+        <div class="step-num condensed">01</div>
+        <h4>Pose</h4>
+        <p>Webcam frames stream to a local YOLO pose model that tracks your joints in real time.</p>
+      </div>
+      <div class="step glass">
+        <div class="step-num condensed">02</div>
+        <h4>Checkpoints</h4>
+        <p>Depth, chest touch, and lockout are measured frame-by-frame against the rulebook for your lift.</p>
+      </div>
+      <div class="step glass">
+        <div class="step-num condensed">03</div>
+        <h4>Commands</h4>
+        <p>In competition, a referee state machine times the commands and watches for early movement.</p>
+      </div>
+      <div class="step glass">
+        <div class="step-num condensed">04</div>
+        <h4>Verdict</h4>
+        <p>Each rep gets one call — with the specific faults named, not just a pass or fail.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="verdicts">
+    <div class="sec-label">The calls</div>
+    <h2 class="condensed">Honest verdicts</h2>
+    <div class="verdict-row">
+      <div class="verdict-card glass">
+        <span class="badge GOOD">Good</span>
+        <p>The lift met every checkpoint and obeyed every command. Three white lights.</p>
+      </div>
+      <div class="verdict-card glass">
+        <span class="badge NO_LIFT">No Lift</span>
+        <p>A rule was broken — the specific fault is named: insufficient depth, no chest touch, soft lockout.</p>
+      </div>
+      <div class="verdict-card glass">
+        <span class="badge UNCERTAIN">Uncertain</span>
+        <p>Genuinely too close to call from this camera angle. White Lights says so instead of guessing.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="demo-note glass">
+      <p><strong>Real judging runs locally.</strong> Start the backend with <code>uvicorn api.main:app</code> and open <a href="live.html">/live</a> — the pose model needs your machine. Without a backend, the live page falls back to a clearly-labelled simulator so you can explore the interface.</p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <div class="foot-links">
+      <a href="live.html">Live Judge</a>
+      <a href="history.html">History</a>
+      <a href="stats.html">Stats</a>
+      <a href="index.html">Upload a Clip</a>
+    </div>
+    <div class="foot-small">White Lights — v1 validated at 91% agreement on 5,000+ reps.</div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  var savedTheme = localStorage.getItem('wl.theme');
+  if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var cur = root.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    var next = cur === 'light' ? 'dark' : 'light';
+    if (next === 'dark') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', 'light');
+    localStorage.setItem('wl.theme', next);
+  });
+})();
+</script>
+</body>
+</html>
