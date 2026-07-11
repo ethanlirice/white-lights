@@ -206,6 +206,59 @@ def make_bench_from_series():
     return make_bench_3d
 
 
+def make_deadlift_3d(
+    bar_z_series: list[float],
+    *,
+    fps: float = FPS,
+    floor: float = 0.15,
+    top: float = 1.0,
+    confidence: float = 0.95,
+) -> Pose3DSequence:
+    """Deadlift trace: the bar (wrists) follows ``bar_z_series``; the body goes
+    from bent (bar low) to a straight standing lockout (bar high).
+
+    Body straightness is tied to the bar's progress floor->top, so at the top the
+    hip-knee-ankle and shoulder-hip-knee angles are ~180 deg (locked) and while
+    the bar is low they are clearly bent.
+    """
+    frames: list[FrameKeypoints3D] = []
+    for i, bar in enumerate(bar_z_series):
+        progress = max(0.0, min(1.0, (bar - floor) / (top - floor)))
+        bend = 1.0 - progress
+        hip_z = 0.5 + 0.5 * progress
+        kps: dict[str, Keypoint3D] = {}
+        for side, sx in (("left", -0.15), ("right", 0.15)):
+            kps[f"{side}_ankle"] = Keypoint3D(
+                name=f"{side}_ankle", x=sx, y=0.0, z=0.0, confidence=confidence
+            )
+            kps[f"{side}_knee"] = Keypoint3D(
+                name=f"{side}_knee", x=sx + 0.5 * bend, y=0.0, z=0.5, confidence=confidence
+            )
+            kps[f"{side}_hip"] = Keypoint3D(
+                name=f"{side}_hip", x=sx + 0.3 * bend, y=0.0, z=hip_z, confidence=confidence
+            )
+            kps[f"{side}_shoulder"] = Keypoint3D(
+                name=f"{side}_shoulder",
+                x=sx + 0.15 * bend,
+                y=0.0,
+                z=hip_z + 0.5,
+                confidence=confidence,
+            )
+            kps[f"{side}_wrist"] = Keypoint3D(
+                name=f"{side}_wrist", x=sx + 0.2 * bend, y=0.0, z=bar, confidence=confidence
+            )
+        frames.append(
+            FrameKeypoints3D(frame_idx=i, time_s=i / fps, keypoints=kps, confidence=confidence)
+        )
+    return Pose3DSequence(fps=fps, frames=frames, camera_ids=["cam0"])
+
+
+@pytest.fixture
+def make_deadlift_from_series():
+    """Return the deadlift trace builder taking an explicit bar-z series."""
+    return make_deadlift_3d
+
+
 @pytest.fixture
 def make_full_squat():
     """Return a builder for a full-keypoint (with ankles) good-depth squat.
