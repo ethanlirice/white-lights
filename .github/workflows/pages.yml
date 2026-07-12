@@ -1,8 +1,10 @@
 name: Deploy live-UI demo to Pages
 
-# Publishes web/live.html as a static GitHub Pages site. With no backend to
-# connect to, the page falls back to its built-in offline simulator, so the full
-# UI is clickable as a live demo. Enable once in the repo:
+# Publishes the full multi-page web/ site to GitHub Pages: landing is the entry
+# point (index.html), linking to the live judge, history, and stats pages via
+# relative *.html hrefs (which work under the /<repo>/ project-Pages subpath).
+# With no backend to connect to, the live page falls back to its built-in
+# offline simulator, so the whole flow is clickable as a live demo. Enable once:
 #   Settings -> Pages -> Source: "GitHub Actions".
 
 on:
@@ -30,7 +32,9 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp web/live.html _site/index.html
+          # Ship every page; landing is the entry point (index.html).
+          cp web/landing.html web/live.html web/history.html web/stats.html web/upload.html _site/
+          cp web/landing.html _site/index.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

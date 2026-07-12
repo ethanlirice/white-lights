@@ -112,10 +112,19 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 16px 20px; gap: 12px;
   }
-  .brand{ display: flex; align-items: center; gap: 10px; padding: 10px 16px; }
+  .topbar-left{ display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .brand{ display: flex; align-items: center; gap: 10px; padding: 10px 16px; text-decoration: none; color: inherit; }
   .brand-lights{ display: flex; gap: 5px; }
   .brand-dot{ width: 8px; height: 8px; border-radius: 50%; background: var(--white-lamp); box-shadow: 0 0 8px 1px oklch(100% 0 0 / 0.5); }
   .brand-word{ font-size: 15px; text-transform: uppercase; }
+
+  .nav-links{ display: flex; align-items: center; gap: 2px; }
+  .nav-links a{
+    text-decoration: none; font-size: 13px; font-weight: 600; color: var(--text-dim);
+    padding: 8px 12px; border-radius: 999px;
+  }
+  .nav-links a:hover{ color: var(--text); background: oklch(50% 0 0 / 0.12); }
+  .nav-links a.here{ color: var(--text); background: oklch(50% 0 0 / 0.14); }
 
   .topbar-right{ display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .chip{
@@ -341,6 +350,7 @@
     #light{ width: 34px; height: 34px; }
     #topbar{ padding: 12px 14px; flex-wrap: wrap; }
     .brand-word{ display: none; }
+    .nav-links a.here{ display: none; }  /* current page — save room on mobile */
   }
   @media (max-width: 560px){
     #depthModule, #modeCards{ position: static; width: auto; margin: 0 10px 10px; }
@@ -399,9 +409,16 @@
   </div>
 
   <header id="topbar">
-    <div class="brand glass">
-      <div class="brand-lights"><div class="brand-dot"></div><div class="brand-dot"></div><div class="brand-dot"></div></div>
-      <span class="brand-word condensed">White Lights</span>
+    <div class="topbar-left">
+      <a class="brand glass" href="landing.html">
+        <div class="brand-lights"><div class="brand-dot"></div><div class="brand-dot"></div><div class="brand-dot"></div></div>
+        <span class="brand-word condensed">White Lights</span>
+      </a>
+      <nav class="nav-links glass" aria-label="Site">
+        <a class="here" href="live.html">Live</a>
+        <a href="history.html">History</a>
+        <a href="stats.html">Stats</a>
+      </nav>
     </div>
     <div class="topbar-right">
       <label class="chip glass" for="cameraSelect">
