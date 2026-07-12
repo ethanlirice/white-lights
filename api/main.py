@@ -2,10 +2,13 @@
 
 Routes
 ------
-GET  /        -> serves the minimal upload UI (web/index.html)
-POST /judge   -> accepts one or more video uploads, runs the batch pipeline,
-                 returns per-rep verdicts as JSON.
+GET  /         -> serves the landing page (web/landing.html), the app's front door
 GET  /live     -> serves the live webcam judge UI (web/live.html)
+GET  /history  -> serves the training-history page (web/history.html)
+GET  /stats    -> serves the stats page (web/stats.html)
+GET  /upload   -> serves the batch upload UI (web/upload.html)
+POST /judge    -> accepts one or more video uploads, runs the batch pipeline,
+                 returns per-rep verdicts as JSON.
 WS   /ws/live  -> streams JPEG frames in, returns per-frame keypoints + the live
                  tracker's reasoning as JSON (one response per frame).
 
@@ -45,8 +48,8 @@ app = FastAPI(
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
-    """Serve the static upload page."""
-    return FileResponse(WEB_DIR / "index.html")
+    """Serve the landing page — the app's front door."""
+    return FileResponse(WEB_DIR / "landing.html")
 
 
 @app.get("/live", include_in_schema=False)
@@ -55,9 +58,16 @@ def live_page() -> FileResponse:
     return FileResponse(WEB_DIR / "live.html")
 
 
-# The multi-page UI (landing / live / history / stats) links between pages with
-# relative `*.html` hrefs; serve those, plus clean `/landing|/history|/stats`.
-_PAGES = frozenset({"index", "live", "landing", "history", "stats"})
+@app.get("/upload", include_in_schema=False)
+def upload_page() -> FileResponse:
+    """Serve the batch upload UI."""
+    return FileResponse(WEB_DIR / "upload.html")
+
+
+# The multi-page UI (landing / live / history / stats / upload) links between
+# pages with relative `*.html` hrefs; serve those, plus clean
+# `/landing|/history|/stats|/upload`.
+_PAGES = frozenset({"upload", "live", "landing", "history", "stats"})
 
 
 @app.get("/{page}.html", include_in_schema=False)

@@ -16,10 +16,12 @@ from api.main import app
 client = TestClient(app)
 
 
-def test_index_serves_upload_page() -> None:
+def test_root_serves_landing_page() -> None:
     res = client.get("/")
     assert res.status_code == 200
     assert "White Lights" in res.text
+    # The landing page is the front door: it links onward to the live judge.
+    assert "live.html" in res.text
 
 
 def test_live_page_served() -> None:
@@ -27,6 +29,28 @@ def test_live_page_served() -> None:
     assert res.status_code == 200
     assert "live" in res.text.lower()
     assert "/ws/live" in res.text  # client wires up the websocket
+    # Live page is connected, not a dead end: links back to the rest of the site.
+    assert "history.html" in res.text
+    assert "landing.html" in res.text
+
+
+def test_upload_page_served() -> None:
+    res = client.get("/upload")
+    assert res.status_code == 200
+    assert "White Lights" in res.text
+    assert "/judge" in res.text  # the batch-upload form posts here
+
+
+def test_multipage_routes_served() -> None:
+    for path in ("/landing", "/history", "/stats"):
+        res = client.get(path)
+        assert res.status_code == 200, path
+    # Relative *.html hrefs used for cross-page nav must resolve too.
+    for page in ("landing.html", "live.html", "history.html", "stats.html", "upload.html"):
+        res = client.get(f"/{page}")
+        assert res.status_code == 200, page
+    # Unknown pages 404 rather than leaking the filesystem.
+    assert client.get("/secrets.html").status_code == 404
 
 
 def test_live_payload_normalises_keypoints_and_verdict() -> None:
