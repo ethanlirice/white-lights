@@ -23,7 +23,7 @@ automatic HTTPS, and a public URL. Trade-off: a free Space **sleeps when idle**
    ```
    ---
    title: White Lights
-   emoji: 🤍
+   emoji: 
    colorFrom: gray
    colorTo: green
    sdk: docker
