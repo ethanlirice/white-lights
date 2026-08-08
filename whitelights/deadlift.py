@@ -33,11 +33,10 @@ from enum import StrEnum
 
 from pydantic import BaseModel, Field
 
-from .bench import Federation
 from .depth import DepthFrameResult
-from .live import LiveStatus
+from .federations import Federation
 from .posture import FootDriftMonitor, PostureConfig, joint_angle_deg
-from .types import Fault, FrameKeypoints3D, RepVerdict, Verdict
+from .types import Fault, FrameKeypoints3D, LiveStatus, RepVerdict, Verdict
 
 _WRIST = ("left_wrist", "right_wrist")
 _SIDES = ("left", "right")

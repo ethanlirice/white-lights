@@ -13,6 +13,7 @@ Coordinate conventions
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 from pydantic import BaseModel, Field
@@ -202,3 +203,35 @@ class JudgeResult(BaseModel):
     camera_ids: list[str] = Field(default_factory=list)
     reps: list[RepVerdict] = Field(default_factory=list)
     processing_ms: float = 0.0
+
+
+# ---------------------------------------------------------------------------
+# Live (online) judging
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class LiveStatus:
+    """Everything the overlay / reasoning panel needs after each frame.
+
+    Shared by every online tracker, which is why it lives here rather than in any
+    one lift's module — `bench` and `deadlift` used to import it from `live`
+    (the squat module), inverting the dependency between sibling lifts.
+
+    ``state`` is the tracker's own state enum. Each is a `StrEnum`, so it is a
+    genuine `str` and serialises directly; the concrete type differs per lift.
+    """
+
+    state: str
+    note: str  # human-readable "what am I thinking" line
+    below_parallel: bool | None  # current-frame depth: True/False, or None if gated
+    depth_margin: float | None
+    hip_z: float | None  # the lift's primary signal (hip / wrist / bar height)
+    standing_ref: float | None
+    descent_fraction: float | None  # progress through the lift, 0..1+
+    rep_count: int
+    last_verdict: RepVerdict | None
+    rep_completed: bool
+    command: str | None = None  # e.g. SQUAT / START / PRESS / RACK / DOWN on the frame issued
+    checkpoint: bool | None = None  # the lift's key checkpoint met (squat: below parallel;
+    # bench: bar on chest; deadlift: locked out) — feeds the generic "checkpoint light".

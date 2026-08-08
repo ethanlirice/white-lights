@@ -16,24 +16,16 @@ Pieces:
         standing) before counting — shallow bobs and single-frame jitter are
         discarded, not counted.
     Pure logic, no camera. Unit-tested against synthetic frames.
+  * :class:`CompetitionTracker` — the referee-command single-attempt judge.
   * :class:`LiveJudge` — per-frame glue: pose -> smoothing -> single-view 3D
     lift -> per-frame depth -> tracker.
-  * :func:`main` — the OpenCV webcam demo. cv2/ultralytics imported lazily.
 
-Run it::
-
-    pip install -e ".[cv]"
-    python -m whitelights.live               # default camera
-    python -m whitelights.live --camera 1    # pick a different camera (see below)
-
-macOS note: if the feed opens on your iPhone, that is Continuity Camera grabbing
-index 0. Try ``--camera 1`` / ``--camera 2`` for the built-in FaceTime camera,
-or turn Continuity Camera off on the phone. Press ESC or q to quit.
+Judging logic only: the OpenCV webcam demo and its drawing code live in
+`whitelights.cli`, which is where ``python -m whitelights.cli`` runs from.
 """
 
 from __future__ import annotations
 
-import argparse
 import math
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -43,9 +35,21 @@ from pydantic import BaseModel, Field
 from .depth import DepthConfig, DepthFrameResult, judge_depth_frame
 from .filters import StreamingKeypointSmoother
 from .fusion import reconstruct_3d
-from .pose import DEFAULT_MODEL, PoseEstimator, result_to_frame
+from .pose import PoseEstimator, result_to_frame
 from .posture import FootDriftMonitor, PostureConfig, is_locked_out
-from .types import Fault, FrameKeypoints, FrameKeypoints3D, PoseSequence, RepVerdict, Verdict
+from .types import (
+    Fault,
+    FrameKeypoints,
+    FrameKeypoints3D,
+    LiveStatus,
+    PoseSequence,
+    RepVerdict,
+    Verdict,
+)
+
+# Re-exported for the lift modules and the API, which have always imported it
+# from here; it now lives in `types` because every tracker shares it.
+__all__ = ["LiveStatus"]
 
 _HIP = ("left_hip", "right_hip")
 _SIDES = ("left", "right")
@@ -71,25 +75,6 @@ class LiveConfig(BaseModel):
     standing_ema: float = 0.20  # how fast the standing reference re-baselines when still
     max_lost_frames: int = 8  # dropouts before an in-progress rep is abandoned
     posture: PostureConfig = Field(default_factory=PostureConfig)
-
-
-@dataclass
-class LiveStatus:
-    """Everything the overlay / reasoning panel needs after each frame."""
-
-    state: LiveState
-    note: str  # human-readable "what am I thinking" line
-    below_parallel: bool | None  # current-frame depth: True/False, or None if gated
-    depth_margin: float | None
-    hip_z: float | None
-    standing_ref: float | None
-    descent_fraction: float | None  # how far below standing, as a fraction of thigh (0..1+)
-    rep_count: int
-    last_verdict: RepVerdict | None
-    rep_completed: bool
-    command: str | None = None  # "SQUAT"/"RACK" on the frame it is issued (competition mode)
-    checkpoint: bool | None = None  # the lift's key checkpoint met (squat: below parallel;
-    # bench: bar on chest; deadlift: locked out) — feeds the generic "checkpoint light".
 
 
 @dataclass
@@ -628,142 +613,10 @@ class LiveJudge:
         return frame2d, depth, status
 
 
-# ---------------------------------------------------------------------------
-# Webcam demo (OpenCV) — imported lazily, not covered by unit tests
-# ---------------------------------------------------------------------------
+# The OpenCV webcam demo now lives in `whitelights.cli` — this module is judging
+# logic only. `python -m whitelights.live` is kept working because the README and
+# docs have always documented it.
+if __name__ == "__main__":  # pragma: no cover
+    from .cli import main
 
-_SKELETON = [
-    ("left_shoulder", "right_shoulder"),
-    ("left_shoulder", "left_hip"),
-    ("right_shoulder", "right_hip"),
-    ("left_hip", "right_hip"),
-    ("left_hip", "left_knee"),
-    ("left_knee", "left_ankle"),
-    ("right_hip", "right_knee"),
-    ("right_knee", "right_ankle"),
-]
-
-
-def _light_color(below: bool | None) -> tuple[int, int, int]:
-    if below is True:
-        return (0, 200, 0)
-    if below is False:
-        return (0, 0, 220)
-    return (128, 128, 128)
-
-
-def _draw_overlay(img, frame2d: FrameKeypoints, status: LiveStatus, conf: float) -> None:
-    import cv2
-
-    h, w = img.shape[:2]
-
-    # Knee line (depth target): a horizontal line at the higher knee.
-    knees = [frame2d.get(f"{s}_knee") for s in _SIDES]
-    knee_ys = [int(k.y) for k in knees if k and k.confidence >= conf]
-    if knee_ys:
-        ky = min(knee_ys)
-        cv2.line(img, (0, ky), (w, ky), (0, 220, 220), 1, cv2.LINE_AA)
-        cv2.putText(
-            img,
-            "knee line",
-            (w - 130, ky - 8),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 220, 220),
-            1,
-            cv2.LINE_AA,
-        )
-
-    # Skeleton (thick) + joints.
-    for a, b in _SKELETON:
-        ka, kb = frame2d.get(a), frame2d.get(b)
-        if ka and kb and ka.confidence >= conf and kb.confidence >= conf:
-            cv2.line(
-                img, (int(ka.x), int(ka.y)), (int(kb.x), int(kb.y)), (255, 255, 255), 3, cv2.LINE_AA
-            )
-    for kp in frame2d.keypoints.values():
-        if kp.confidence >= conf:
-            cv2.circle(img, (int(kp.x), int(kp.y)), 6, (0, 200, 255), -1, cv2.LINE_AA)
-
-    # Top banner: light + state + note.
-    cv2.rectangle(img, (0, 0), (w, 96), (30, 30, 30), -1)
-    cv2.circle(img, (46, 48), 26, _light_color(status.below_parallel), -1, cv2.LINE_AA)
-    cv2.putText(
-        img, status.state, (88, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA
-    )
-    cv2.putText(
-        img, status.note, (88, 78), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 2, cv2.LINE_AA
-    )
-    cv2.putText(
-        img,
-        f"reps: {status.rep_count}",
-        (w - 200, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1.0,
-        (255, 255, 255),
-        2,
-        cv2.LINE_AA,
-    )
-
-    # Depth progress bar (how far into a rep, and whether below parallel).
-    if status.descent_fraction is not None:
-        bx, by, bw, bh = 88, 108, 260, 18
-        cv2.rectangle(img, (bx, by), (bx + bw, by + bh), (80, 80, 80), 1)
-        fill = int(min(1.0, status.descent_fraction) * bw)
-        cv2.rectangle(img, (bx, by), (bx + fill, by + bh), _light_color(status.below_parallel), -1)
-
-    # Last verdict.
-    if status.last_verdict is not None:
-        v = status.last_verdict
-        label = v.verdict.value + (
-            "  (" + ", ".join(f.value for f in v.faults) + ")" if v.faults else ""
-        )
-        color = _light_color(True if v.verdict == Verdict.GOOD else None)
-        cv2.putText(
-            img,
-            f"last rep: {label}",
-            (16, h - 20),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            color,
-            2,
-            cv2.LINE_AA,
-        )
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="White Lights — live webcam squat judge")
-    parser.add_argument("--camera", type=int, default=0, help="Camera index (try 1/2 for built-in)")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="YOLO11-pose weights")
-    parser.add_argument("--conf", type=float, default=0.25, help="Detection confidence")
-    args = parser.parse_args()
-
-    import cv2
-
-    cap = cv2.VideoCapture(args.camera)
-    if not cap.isOpened():
-        raise SystemExit(f"Could not open camera {args.camera} (try --camera 1 or 2)")
-    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-
-    judge = LiveJudge(PoseEstimator(model_path=args.model, conf=args.conf), fps=fps)
-    print("White Lights live — press ESC or q to quit.")
-    try:
-        while True:
-            ok, frame = cap.read()
-            if not ok:
-                break
-            frame2d, _depth, status = judge.process_frame(frame)
-            _draw_overlay(frame, frame2d, status, args.conf)
-            if status.rep_completed and status.last_verdict is not None:
-                v = status.last_verdict
-                print(f"rep {v.rep_index}: {v.verdict.value} {[f.value for f in v.faults]}")
-            cv2.imshow("White Lights — live", frame)
-            if cv2.waitKey(1) & 0xFF in (27, ord("q")):
-                break
-    finally:
-        cap.release()
-        cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
     main()

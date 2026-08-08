@@ -30,17 +30,16 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from .depth import DepthFrameResult
-from .live import LiveStatus
+from .federations import Federation
 from .posture import PostureConfig, elbow_angle_deg
-from .types import Fault, FrameKeypoints3D, RepVerdict, Verdict
+from .types import Fault, FrameKeypoints3D, LiveStatus, RepVerdict, Verdict
+
+# Re-exported: `Federation` used to be defined here, and callers import it from
+# this module. It now lives in `federations` because deadlift needs it too.
+__all__ = ["Federation"]
 
 _WRIST = ("left_wrist", "right_wrist")
 _SIDES = ("left", "right")
-
-
-class Federation(StrEnum):
-    IPF = "IPF"  # strict
-    USAPL = "USAPL"  # more lenient
 
 
 class BenchState(StrEnum):
