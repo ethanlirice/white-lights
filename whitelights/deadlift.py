@@ -31,12 +31,12 @@ import math
 from dataclasses import dataclass
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .bench import Federation
 from .depth import DepthFrameResult
 from .live import LiveStatus
-from .posture import joint_angle_deg
+from .posture import FootDriftMonitor, PostureConfig, joint_angle_deg
 from .types import Fault, FrameKeypoints3D, RepVerdict, Verdict
 
 _WRIST = ("left_wrist", "right_wrist")
@@ -66,6 +66,7 @@ class DeadliftConfig(BaseModel):
     lockout_hip_angle_deg: float = 160.0
     lockout_uncertain_deg: float = 6.0  # band above threshold that reads as too-close-to-call
     max_wait_s: float = 8.0
+    posture: PostureConfig = Field(default_factory=PostureConfig)
 
 
 def deadlift_config_for(federation: Federation) -> DeadliftConfig:
@@ -114,6 +115,7 @@ class DeadliftTracker:
         # of having judged the attempt, not of which command happened to be issued
         # — the abort path (never locked out) finalises without a command.
         self._just_completed = False
+        self._feet = FootDriftMonitor(self.config.posture)
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
@@ -155,6 +157,7 @@ class DeadliftTracker:
             else:
                 note = "set up and pull the bar when ready"
         elif self.state == DeadliftState.PULLING:
+            self._feet.observe(frame)
             if bar < self._cand.peak_bar - c.downward_movement_fraction * scale:
                 self._cand.downward = True
             if bar < self._cand.peak_bar - c.abort_fraction * scale and not locked:
@@ -170,6 +173,7 @@ class DeadliftTracker:
                 self._cand.peak_bar = max(self._cand.peak_bar, bar)
                 note = "pull to a full lockout — knees and hips straight"
         elif self.state == DeadliftState.AWAIT_DOWN:
+            self._feet.observe(frame)
             waited = t - (self._lockout_entered or t)
             if bar < self._cand.lockout_bar - c.downward_movement_fraction * 2 * scale:
                 self._early_down = True
@@ -195,6 +199,8 @@ class DeadliftTracker:
 
     def _begin(self, frame: FrameKeypoints3D, bar: float) -> None:
         self._cand = _DL(start_frame=frame.frame_idx, start_time=frame.time_s, peak_bar=bar)
+        self._feet.reset()
+        self._feet.observe(frame)
 
     def _grade_lockout(self, knee: float | None, hip: float | None) -> None:
         c = self.config
@@ -216,6 +222,8 @@ class DeadliftTracker:
             faults.append(Fault.INCOMPLETE_LOCKOUT)
         if self._cand.downward:
             faults.append(Fault.DOWNWARD_MOVEMENT)
+        if self._feet.moved():
+            faults.append(Fault.FOOT_MOVEMENT)
         if self._early_down:
             faults.append(Fault.EARLY_DOWN)
 

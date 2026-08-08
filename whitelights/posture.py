@@ -25,6 +25,8 @@ yields no postural faults rather than false positives.
 from __future__ import annotations
 
 import math
+from collections import deque
+from collections.abc import Iterable
 
 from pydantic import BaseModel, Field
 
@@ -112,22 +114,68 @@ def is_locked_out(frame: FrameKeypoints3D, config: PostureConfig) -> bool | None
     return min(angles) >= config.lockout_knee_angle_deg
 
 
-def foot_displacement_ratio(frames: list[FrameKeypoints3D], config: PostureConfig) -> float | None:
-    """Max horizontal ankle drift over ``frames``, as a fraction of thigh length.
+class FootDriftMonitor:
+    """Online counterpart to :func:`foot_displacement_ratio`.
 
-    Returns None when there is no usable ankle track or no thigh reference.
+    The batch pipeline judges a whole rep at once; the live trackers see one
+    frame at a time. This accumulates the same evidence incrementally and
+    computes the same ratio, so the two execution paths agree *by construction*
+    rather than by two implementations happening to match — the batch function
+    below delegates to it.
+
+    Bounded by ``max_frames`` per ankle (default 900 ≈ 30 s at 30 fps), which is
+    far longer than any single attempt, so a long-running training session can't
+    grow this without limit. Call :meth:`reset` at the start of each rep.
     """
-    reference = _mean_thigh_length(frames, config.min_confidence)
-    if not reference:
-        return None
 
+    def __init__(self, config: PostureConfig | None = None, *, max_frames: int = 900) -> None:
+        self.config = config or PostureConfig()
+        self._max_frames = max_frames
+        self.reset()
+
+    def reset(self) -> None:
+        self._ankles: dict[str, deque[tuple[float, float]]] = {
+            side: deque(maxlen=self._max_frames) for side in _SIDES
+        }
+        self._thighs: deque[float] = deque(maxlen=self._max_frames)
+
+    def observe(self, frame: FrameKeypoints3D) -> None:
+        """Record this frame's ankle positions and thigh reference, if usable."""
+        min_conf = self.config.min_confidence
+        for side in _SIDES:
+            ankle = frame.get(f"{side}_ankle")
+            if ankle is not None and ankle.confidence >= min_conf:
+                self._ankles[side].append((ankle.x, ankle.y))
+            hip = frame.get(f"{side}_hip")
+            knee = frame.get(f"{side}_knee")
+            if hip is None or knee is None:
+                continue
+            if min(hip.confidence, knee.confidence) < min_conf:
+                continue
+            self._thighs.append(math.dist((hip.x, hip.y, hip.z), (knee.x, knee.y, knee.z)))
+
+    def ratio(self) -> float | None:
+        """Max ankle drift so far as a fraction of thigh length, or None."""
+        if not self._thighs:
+            return None
+        reference = sum(self._thighs) / len(self._thighs)
+        if not reference:
+            return None
+        return _max_drift_ratio(self._ankles.values(), reference)
+
+    def moved(self) -> bool:
+        """Has a foot drifted past the configured threshold? False when unknown."""
+        ratio = self.ratio()
+        return ratio is not None and ratio > self.config.foot_movement_fraction
+
+
+def _max_drift_ratio(
+    tracks: Iterable[Iterable[tuple[float, float]]], reference: float
+) -> float | None:
+    """Largest deviation-from-centroid across ankle tracks, scaled by ``reference``."""
     max_ratio: float | None = None
-    for side in _SIDES:
-        points = [
-            (a.x, a.y)
-            for f in frames
-            if (a := f.get(f"{side}_ankle")) is not None and a.confidence >= config.min_confidence
-        ]
+    for track in tracks:
+        points = list(track)
         if len(points) < 2:
             continue
         cx = sum(p[0] for p in points) / len(points)
@@ -136,6 +184,18 @@ def foot_displacement_ratio(frames: list[FrameKeypoints3D], config: PostureConfi
         ratio = deviation / reference
         max_ratio = ratio if max_ratio is None else max(max_ratio, ratio)
     return max_ratio
+
+
+def foot_displacement_ratio(frames: list[FrameKeypoints3D], config: PostureConfig) -> float | None:
+    """Max horizontal ankle drift over ``frames``, as a fraction of thigh length.
+
+    Returns None when there is no usable ankle track or no thigh reference.
+    Batch entry point; shares its implementation with :class:`FootDriftMonitor`.
+    """
+    monitor = FootDriftMonitor(config, max_frames=max(2, len(frames)))
+    for frame in frames:
+        monitor.observe(frame)
+    return monitor.ratio()
 
 
 # ---------------------------------------------------------------------------

@@ -44,7 +44,7 @@ from .depth import DepthConfig, DepthFrameResult, judge_depth_frame
 from .filters import StreamingKeypointSmoother
 from .fusion import reconstruct_3d
 from .pose import DEFAULT_MODEL, PoseEstimator, result_to_frame
-from .posture import PostureConfig, is_locked_out
+from .posture import FootDriftMonitor, PostureConfig, is_locked_out
 from .types import Fault, FrameKeypoints, FrameKeypoints3D, PoseSequence, RepVerdict, Verdict
 
 _HIP = ("left_hip", "right_hip")
@@ -70,6 +70,7 @@ class LiveConfig(BaseModel):
     still_velocity_fraction: float = 0.50  # |hip velocity| (per s) below this == "still"
     standing_ema: float = 0.20  # how fast the standing reference re-baselines when still
     max_lost_frames: int = 8  # dropouts before an in-progress rep is abandoned
+    posture: PostureConfig = Field(default_factory=PostureConfig)
 
 
 @dataclass
@@ -124,6 +125,7 @@ class OnlineRepTracker:
         self._rep_count = 0
         self._last_verdict: RepVerdict | None = None
         self._cand = _Candidate()
+        self._feet = FootDriftMonitor(self.config.posture)
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
@@ -192,10 +194,13 @@ class OnlineRepTracker:
 
     def _begin_rep(self, frame: FrameKeypoints3D, hip: float) -> None:
         self._cand = _Candidate(start_frame=frame.frame_idx, start_time=frame.time_s, min_hip=hip)
+        self._feet.reset()
+        self._feet.observe(frame)
 
     def _accumulate(self, frame: FrameKeypoints3D, depth: DepthFrameResult, hip: float) -> None:
         self._cand.min_hip = min(self._cand.min_hip, hip)
         self._cand.lost = 0
+        self._feet.observe(frame)
         if not depth.gated and depth.depth_margin is not None:
             self._cand.had_confident = True
             if depth.is_below_parallel:
@@ -221,6 +226,8 @@ class OnlineRepTracker:
             faults.append(Fault.INSUFFICIENT_DEPTH)
         if cand.downward:
             faults.append(Fault.DOWNWARD_MOVEMENT)
+        if self._feet.moved():
+            faults.append(Fault.FOOT_MOVEMENT)
 
         if faults:
             verdict = Verdict.NO_LIFT
@@ -378,6 +385,7 @@ class CompetitionTracker:
         # Set by _finalize, consumed by the next _status. Keyed to "the attempt was
         # judged", not to a particular command, so every terminal path reports.
         self._just_completed = False
+        self._feet = FootDriftMonitor(self.config.posture)
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
@@ -404,6 +412,11 @@ class CompetitionTracker:
         t = frame.time_s
         cmd = None
         note = ""
+
+        # The feet must stay planted for the whole attempt, so watch them from the
+        # setup hold onward rather than only during the descent.
+        if self.state != CompState.AWAIT_SETUP:
+            self._feet.observe(frame)
 
         if self.state == CompState.AWAIT_SETUP:
             if still:
@@ -478,6 +491,7 @@ class CompetitionTracker:
 
     def _begin(self, frame: FrameKeypoints3D, hip: float) -> None:
         self._cand = _Candidate(start_frame=frame.frame_idx, start_time=frame.time_s, min_hip=hip)
+        self._feet.observe(frame)
 
     def _accumulate(self, depth: DepthFrameResult, hip: float) -> None:
         self._cand.min_hip = min(self._cand.min_hip, hip)
@@ -500,6 +514,8 @@ class CompetitionTracker:
             faults.append(Fault.INSUFFICIENT_DEPTH)
         if cand.downward:
             faults.append(Fault.DOWNWARD_MOVEMENT)
+        if self._feet.moved():
+            faults.append(Fault.FOOT_MOVEMENT)
         if self._early_rack:
             faults.append(Fault.EARLY_RACK)
 
