@@ -57,6 +57,7 @@ from pydantic import BaseModel, Field
 
 from .depth import DepthFrameResult
 from .posture import PostureConfig, foot_displacement_ratio, is_locked_out
+from .tracking import decide
 from .types import (
     Command,
     Fault,
@@ -64,7 +65,6 @@ from .types import (
     Pose3DSequence,
     RefereeCommand,
     RepVerdict,
-    Verdict,
 )
 
 _HIP_KEYPOINTS = ("left_hip", "right_hip")
@@ -218,12 +218,9 @@ def _verdict_for_segment(
     if _has_foot_movement(frames, start, end, config.posture):
         faults.append(Fault.FOOT_MOVEMENT)
 
-    if faults:
-        verdict = Verdict.NO_LIFT
-    elif not depth_known:
-        verdict = Verdict.UNCERTAIN
-    else:
-        verdict = Verdict.GOOD
+    # Same rule as every online judge — the batch and live paths must not drift
+    # apart on what a faulted-but-borderline attempt is.
+    verdict = decide(faults, uncertain=not depth_known)
 
     deepest = max(confident, key=lambda d: d.depth_margin) if confident else None
     return RepVerdict(

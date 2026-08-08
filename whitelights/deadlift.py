@@ -35,11 +35,21 @@ from pydantic import BaseModel, Field
 
 from .depth import DepthFrameResult
 from .federations import Federation
-from .posture import FootDriftMonitor, PostureConfig, joint_angle_deg
+from .posture import FootDriftMonitor, PostureConfig
+from .tracking import (
+    HoldTimer,
+    MotionTracker,
+    decide,
+    governing_angle,
+    mean_height,
+    segment_length,
+)
 from .types import Fault, FrameKeypoints3D, LiveStatus, RepVerdict, Verdict
 
 _WRIST = ("left_wrist", "right_wrist")
-_SIDES = ("left", "right")
+_TORSO = ("shoulder", "hip")
+_KNEE_CHAIN = ("hip", "knee", "ankle")
+_HIP_CHAIN = ("shoulder", "hip", "knee")
 
 
 class DeadliftState(StrEnum):
@@ -100,9 +110,8 @@ class DeadliftTracker:
         self.state = DeadliftState.AWAIT_LIFT
         self._floor: float | None = None
         self._torso: float | None = None
-        self._prev: float | None = None
-        self._prev_t: float | None = None
-        self._hold: float | None = None
+        self._motion = MotionTracker(self.config.still_velocity_fraction)
+        self._hold = HoldTimer()
         self._lockout_entered: float | None = None
         self._rep_count = 0
         self._last_verdict: RepVerdict | None = None
@@ -118,25 +127,23 @@ class DeadliftTracker:
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
-        bar = _mean_z(frame, _WRIST, c.min_confidence)
-        torso = _torso(frame, c.min_confidence)
-        knee = _governing_angle(frame, "hip", "knee", "ankle", c.min_confidence)
-        hip = _governing_angle(frame, "shoulder", "hip", "knee", c.min_confidence)
+        bar = mean_height(frame, _WRIST, c.min_confidence)
+        torso = segment_length(frame, _TORSO, c.min_confidence)
+        knee = governing_angle(frame, _KNEE_CHAIN, c.min_confidence)
+        hip = governing_angle(frame, _HIP_CHAIN, c.min_confidence)
 
         if self.state == DeadliftState.DONE:
             return self._status(bar, "attempt complete")
         if bar is None or torso is None or torso <= 0:
-            self._hold = None
+            self._hold.reset()
             return self._status(bar, "waiting for a clear view of the bar + legs")
 
         if self._floor is None:
             self._floor, self._torso = bar, torso
-        dt = frame.time_s - self._prev_t if self._prev_t is not None else None
-        vel = (bar - self._prev) / dt if (dt and dt > 0 and self._prev is not None) else 0.0
-        self._prev, self._prev_t = bar, frame.time_s
+        self._motion.observe(bar, frame.time_s)
 
         scale = self._torso or torso
-        still = abs(vel) < c.still_velocity_fraction * scale
+        still = self._motion.is_still(scale)
         locked = (
             knee is not None
             and hip is not None
@@ -166,7 +173,7 @@ class DeadliftTracker:
                 self.state = DeadliftState.AWAIT_DOWN
                 self._cand.lockout_bar = bar
                 self._lockout_entered = t
-                self._hold = None
+                self._hold.reset()
                 note = "locked — hold for the down command"
             else:
                 self._cand.peak_bar = max(self._cand.peak_bar, bar)
@@ -178,7 +185,7 @@ class DeadliftTracker:
                 self._early_down = True
                 cmd = "DOWN"
                 note = self._finalize(frame, knee, hip, "lowered before the down command!")
-            elif self._held(t, still, c.down_hold_s) or waited > c.max_wait_s:
+            elif self._hold.held(t, still, c.down_hold_s) or waited > c.max_wait_s:
                 cmd = "DOWN"
                 note = self._finalize(frame, knee, hip, "DOWN")
             else:
@@ -187,14 +194,6 @@ class DeadliftTracker:
         return self._status(bar, note, command=cmd, scale=scale, checkpoint=locked)
 
     # -- helpers -------------------------------------------------------------
-
-    def _held(self, t: float, condition: bool, hold_s: float) -> bool:
-        if not condition:
-            self._hold = None
-            return False
-        if self._hold is None:
-            self._hold = t
-        return (t - self._hold) >= hold_s
 
     def _begin(self, frame: FrameKeypoints3D, bar: float) -> None:
         self._cand = _DL(start_frame=frame.frame_idx, start_time=frame.time_s, peak_bar=bar)
@@ -226,12 +225,7 @@ class DeadliftTracker:
         if self._early_down:
             faults.append(Fault.EARLY_DOWN)
 
-        if faults:
-            verdict = Verdict.NO_LIFT
-        elif self._uncertain:
-            verdict = Verdict.UNCERTAIN
-        else:
-            verdict = Verdict.GOOD
+        verdict = decide(faults, uncertain=self._uncertain)
 
         self._last_verdict = RepVerdict(
             rep_index=self._rep_count,
@@ -276,32 +270,3 @@ class DeadliftTracker:
             rep_completed=completed,
             command=command,
         )
-
-
-def _mean_z(frame: FrameKeypoints3D, names: tuple[str, ...], min_conf: float) -> float | None:
-    zs = [kp.z for n in names if (kp := frame.get(n)) is not None and kp.confidence >= min_conf]
-    return sum(zs) / len(zs) if zs else None
-
-
-def _torso(frame: FrameKeypoints3D, min_conf: float) -> float | None:
-    lengths: list[float] = []
-    for side in _SIDES:
-        sh = frame.get(f"{side}_shoulder")
-        hip = frame.get(f"{side}_hip")
-        if sh is None or hip is None or min(sh.confidence, hip.confidence) < min_conf:
-            continue
-        lengths.append(math.dist((sh.x, sh.y, sh.z), (hip.x, hip.y, hip.z)))
-    return sum(lengths) / len(lengths) if lengths else None
-
-
-def _governing_angle(
-    frame: FrameKeypoints3D, a: str, b: str, c: str, min_conf: float
-) -> float | None:
-    """The more-bent (min) of the left/right a-b-c angles, or None."""
-    angles = [
-        ang
-        for side in _SIDES
-        if (ang := joint_angle_deg(frame, f"{side}_{a}", f"{side}_{b}", f"{side}_{c}", min_conf))
-        is not None
-    ]
-    return min(angles) if angles else None

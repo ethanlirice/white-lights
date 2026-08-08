@@ -31,7 +31,15 @@ from pydantic import BaseModel, Field
 
 from .depth import DepthFrameResult
 from .federations import Federation
-from .posture import PostureConfig, elbow_angle_deg
+from .posture import PostureConfig
+from .tracking import (
+    HoldTimer,
+    MotionTracker,
+    decide,
+    governing_angle,
+    mean_height,
+    segment_length,
+)
 from .types import Fault, FrameKeypoints3D, LiveStatus, RepVerdict, Verdict
 
 # Re-exported: `Federation` used to be defined here, and callers import it from
@@ -39,7 +47,7 @@ from .types import Fault, FrameKeypoints3D, LiveStatus, RepVerdict, Verdict
 __all__ = ["Federation"]
 
 _WRIST = ("left_wrist", "right_wrist")
-_SIDES = ("left", "right")
+_ARM = ("shoulder", "elbow", "wrist")
 
 
 class BenchState(StrEnum):
@@ -107,9 +115,8 @@ class BenchTracker:
         self._top_z: float | None = None  # extended-arms wrist height (calibrated)
         self._arm_len: float | None = None
         self._lock_ref: float | None = None  # per-lifter elbow lockout angle (calibrated)
-        self._prev: float | None = None
-        self._prev_t: float | None = None
-        self._hold: float | None = None
+        self._motion = MotionTracker(self.config.still_velocity_fraction)
+        self._hold = HoldTimer()
         self._lockout_entered: float | None = None
         self._rep_count = 0
         self._last_verdict: RepVerdict | None = None
@@ -124,24 +131,22 @@ class BenchTracker:
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
-        wrist = _mean_z(frame, _WRIST, c.min_confidence)
-        arm = _arm_len(frame, c.min_confidence)
-        elbow = _elbow_angle(frame, c.min_confidence)
+        wrist = mean_height(frame, _WRIST, c.min_confidence)
+        arm = segment_length(frame, _ARM, c.min_confidence)
+        elbow = governing_angle(frame, _ARM, c.min_confidence)
 
         if self.state == BenchState.DONE:
             return self._status(wrist, "attempt complete")
         if wrist is None or arm is None or arm <= 0:
-            self._hold = None
+            self._hold.reset()
             return self._status(wrist, "waiting for a clear view of your arms")
 
         if self._top_z is None:
             self._top_z, self._arm_len = wrist, arm
-        dt = frame.time_s - self._prev_t if self._prev_t is not None else None
-        vel = (wrist - self._prev) / dt if (dt and dt > 0 and self._prev is not None) else 0.0
-        self._prev, self._prev_t = wrist, frame.time_s
+        vel = self._motion.observe(wrist, frame.time_s)
 
         scale = self._arm_len or arm
-        still = abs(vel) < c.still_velocity_fraction * scale
+        still = self._motion.is_still(scale)
         t = frame.time_s
         locked_setup = elbow is not None and elbow >= c.posture.lockout_elbow_angle_deg
         cmd = None
@@ -155,7 +160,7 @@ class BenchTracker:
                 self._begin(frame, wrist)
                 self.state = BenchState.LOWERING
                 note = "lowered before the command!"
-            elif self._held(t, still and locked_setup, c.setup_hold_s):
+            elif self._hold.held(t, still and locked_setup, c.setup_hold_s):
                 cmd = "START"
                 self._begin(frame, wrist)
                 self.state = BenchState.LOWERING
@@ -174,7 +179,7 @@ class BenchTracker:
                 self._cand.press_peak = wrist
                 self.state = BenchState.PRESSING
                 note = "pressed before the command!"
-            elif self._held(t, still and self._cand.reached_chest, c.chest_hold_s):
+            elif self._hold.held(t, still and self._cand.reached_chest, c.chest_hold_s):
                 cmd = "PRESS"
                 self.state = BenchState.ON_CHEST
                 note = "PRESS — press it up"
@@ -196,7 +201,7 @@ class BenchTracker:
             if wrist >= self._top_z - c.exit_fraction * scale:
                 self.state = BenchState.AWAIT_RACK
                 self._lockout_entered = t
-                self._hold = None
+                self._hold.reset()
                 note = "hold it — wait for the rack command"
             else:
                 note = "pressing…"
@@ -206,7 +211,7 @@ class BenchTracker:
                 self._early_rack = True
                 cmd = "RACK"
                 note = self._finalize(frame, elbow, "racked before the command!")
-            elif self._held(t, still, c.lockout_hold_s) or waited > c.max_wait_s:
+            elif self._hold.held(t, still, c.lockout_hold_s) or waited > c.max_wait_s:
                 cmd = "RACK"
                 note = self._finalize(frame, elbow, "RACK")
             else:
@@ -215,14 +220,6 @@ class BenchTracker:
         return self._status(wrist, note, command=cmd, scale=scale)
 
     # -- helpers -------------------------------------------------------------
-
-    def _held(self, t: float, condition: bool, hold_s: float) -> bool:
-        if not condition:
-            self._hold = None
-            return False
-        if self._hold is None:
-            self._hold = t
-        return (t - self._hold) >= hold_s
 
     def _begin(self, frame: FrameKeypoints3D, wrist: float) -> None:
         self._cand = _Bench(start_frame=frame.frame_idx, start_time=frame.time_s, min_wrist=wrist)
@@ -256,12 +253,8 @@ class BenchTracker:
         if self._early_rack:
             faults.append(Fault.EARLY_RACK)
 
-        if faults:
-            verdict = Verdict.NO_LIFT
-        elif self._lockout_uncertain:
-            verdict = Verdict.UNCERTAIN  # too close to call — don't fake a call
-        else:
-            verdict = Verdict.GOOD
+        # Too close to call at lockout -> UNCERTAIN rather than a fake call.
+        verdict = decide(faults, uncertain=self._lockout_uncertain)
 
         self._last_verdict = RepVerdict(
             rep_index=self._rep_count,
@@ -306,32 +299,3 @@ class BenchTracker:
             rep_completed=completed,
             command=command,
         )
-
-
-def _mean_z(frame: FrameKeypoints3D, names: tuple[str, ...], min_conf: float) -> float | None:
-    zs = [kp.z for n in names if (kp := frame.get(n)) is not None and kp.confidence >= min_conf]
-    return sum(zs) / len(zs) if zs else None
-
-
-def _arm_len(frame: FrameKeypoints3D, min_conf: float) -> float | None:
-    """Shoulder->elbow->wrist segment length (constant scale, unlike reach)."""
-    lengths: list[float] = []
-    for side in _SIDES:
-        s = frame.get(f"{side}_shoulder")
-        e = frame.get(f"{side}_elbow")
-        w = frame.get(f"{side}_wrist")
-        if s is None or e is None or w is None:
-            continue
-        if min(s.confidence, e.confidence, w.confidence) < min_conf:
-            continue
-        lengths.append(
-            math.dist((s.x, s.y, s.z), (e.x, e.y, e.z))
-            + math.dist((e.x, e.y, e.z), (w.x, w.y, w.z))
-        )
-    return sum(lengths) / len(lengths) if lengths else None
-
-
-def _elbow_angle(frame: FrameKeypoints3D, min_conf: float) -> float | None:
-    """The more-bent elbow angle (governs lockout), or None if unmeasurable."""
-    angles = [a for side in _SIDES if (a := elbow_angle_deg(frame, side, min_conf)) is not None]
-    return min(angles) if angles else None

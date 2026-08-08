@@ -37,6 +37,7 @@ from .filters import StreamingKeypointSmoother
 from .fusion import reconstruct_3d
 from .pose import PoseEstimator, result_to_frame
 from .posture import FootDriftMonitor, PostureConfig, is_locked_out
+from .tracking import HoldTimer, MotionTracker, decide, mean_height, segment_length
 from .types import (
     Fault,
     FrameKeypoints,
@@ -44,7 +45,6 @@ from .types import (
     LiveStatus,
     PoseSequence,
     RepVerdict,
-    Verdict,
 )
 
 # Re-exported for the lift modules and the API, which have always imported it
@@ -52,7 +52,7 @@ from .types import (
 __all__ = ["LiveStatus"]
 
 _HIP = ("left_hip", "right_hip")
-_SIDES = ("left", "right")
+_THIGH = ("hip", "knee")
 
 
 class LiveState(StrEnum):
@@ -105,8 +105,7 @@ class OnlineRepTracker:
         self.state = LiveState.STANDING
         self._standing_hip: float | None = None
         self._standing_thigh: float | None = None
-        self._prev_hip: float | None = None
-        self._prev_time: float | None = None
+        self._motion = MotionTracker(self.config.still_velocity_fraction)
         self._rep_count = 0
         self._last_verdict: RepVerdict | None = None
         self._cand = _Candidate()
@@ -114,8 +113,8 @@ class OnlineRepTracker:
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
-        hip = self._hip_z(frame)
-        thigh = self._thigh_length(frame)
+        hip = mean_height(frame, _HIP, c.min_confidence)
+        thigh = segment_length(frame, _THIGH, c.min_confidence)
         below = None if depth.gated else depth.is_below_parallel
         margin = None if depth.gated else depth.depth_margin
 
@@ -131,12 +130,10 @@ class OnlineRepTracker:
         if self._standing_hip is None:
             self._standing_hip, self._standing_thigh = hip, thigh
 
-        dt = frame.time_s - self._prev_time if self._prev_time is not None else None
-        vel = (hip - self._prev_hip) / dt if (dt and dt > 0 and self._prev_hip is not None) else 0.0
-        self._prev_hip, self._prev_time = hip, frame.time_s
+        vel = self._motion.observe(hip, frame.time_s)
 
         scale = self._standing_thigh or thigh
-        still = abs(vel) < c.still_velocity_fraction * scale
+        still = self._motion.is_still(scale)
         completed = False
         note = ""
 
@@ -214,12 +211,7 @@ class OnlineRepTracker:
         if self._feet.moved():
             faults.append(Fault.FOOT_MOVEMENT)
 
-        if faults:
-            verdict = Verdict.NO_LIFT
-        elif not cand.had_confident:
-            verdict = Verdict.UNCERTAIN
-        else:
-            verdict = Verdict.GOOD
+        verdict = decide(faults, uncertain=not cand.had_confident)
 
         return RepVerdict(
             rep_index=self._rep_count,
@@ -243,26 +235,6 @@ class OnlineRepTracker:
         if self._standing_hip is None or scale <= 0:
             return 0.0
         return max(0.0, (self._standing_hip - hip) / scale)
-
-    def _hip_z(self, frame: FrameKeypoints3D) -> float | None:
-        zs = [
-            kp.z
-            for name in _HIP
-            if (kp := frame.get(name)) is not None and kp.confidence >= self.config.min_confidence
-        ]
-        return sum(zs) / len(zs) if zs else None
-
-    def _thigh_length(self, frame: FrameKeypoints3D) -> float | None:
-        lengths: list[float] = []
-        for side in _SIDES:
-            hip = frame.get(f"{side}_hip")
-            knee = frame.get(f"{side}_knee")
-            if hip is None or knee is None:
-                continue
-            if min(hip.confidence, knee.confidence) < self.config.min_confidence:
-                continue
-            lengths.append(math.dist((hip.x, hip.y, hip.z), (knee.x, knee.y, knee.z)))
-        return sum(lengths) / len(lengths) if lengths else None
 
     def _status(
         self,
@@ -295,24 +267,6 @@ class OnlineRepTracker:
 # ---------------------------------------------------------------------------
 # Competition mode: the computer plays referee
 # ---------------------------------------------------------------------------
-
-
-def _hip_z_of(frame: FrameKeypoints3D, min_conf: float) -> float | None:
-    zs = [
-        kp.z for name in _HIP if (kp := frame.get(name)) is not None and kp.confidence >= min_conf
-    ]
-    return sum(zs) / len(zs) if zs else None
-
-
-def _thigh_of(frame: FrameKeypoints3D, min_conf: float) -> float | None:
-    lengths: list[float] = []
-    for side in _SIDES:
-        hip = frame.get(f"{side}_hip")
-        knee = frame.get(f"{side}_knee")
-        if hip is None or knee is None or min(hip.confidence, knee.confidence) < min_conf:
-            continue
-        lengths.append(math.dist((hip.x, hip.y, hip.z), (knee.x, knee.y, knee.z)))
-    return sum(lengths) / len(lengths) if lengths else None
 
 
 class CompState(StrEnum):
@@ -357,9 +311,8 @@ class CompetitionTracker:
         self.state = CompState.AWAIT_SETUP
         self._standing_hip: float | None = None
         self._standing_thigh: float | None = None
-        self._prev_hip: float | None = None
-        self._prev_time: float | None = None
-        self._hold_start: float | None = None  # when the current ready-hold began
+        self._motion = MotionTracker(self.config.still_velocity_fraction)
+        self._hold = HoldTimer()
         self._lockout_entered: float | None = None
         self._rep_count = 0
         self._last_verdict: RepVerdict | None = None
@@ -374,25 +327,23 @@ class CompetitionTracker:
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
-        hip = _hip_z_of(frame, c.min_confidence)
-        thigh = _thigh_of(frame, c.min_confidence)
+        hip = mean_height(frame, _HIP, c.min_confidence)
+        thigh = segment_length(frame, _THIGH, c.min_confidence)
         below = None if depth.gated else depth.is_below_parallel
         margin = None if depth.gated else depth.depth_margin
 
         if self.state == CompState.DONE:
             return self._status(below, margin, hip, "attempt complete", scale=self._standing_thigh)
         if hip is None or thigh is None or thigh <= 0:
-            self._hold_start = None
+            self._hold.reset()
             return self._status(below, margin, hip, "waiting for a clear view of hips + knees")
 
         if self._standing_hip is None:
             self._standing_hip, self._standing_thigh = hip, thigh
-        dt = frame.time_s - self._prev_time if self._prev_time is not None else None
-        vel = (hip - self._prev_hip) / dt if (dt and dt > 0 and self._prev_hip is not None) else 0.0
-        self._prev_hip, self._prev_time = hip, frame.time_s
+        vel = self._motion.observe(hip, frame.time_s)
 
         scale = self._standing_thigh or thigh
-        still = abs(vel) < c.still_velocity_fraction * scale
+        still = self._motion.is_still(scale)
         locked = is_locked_out(frame, c.posture)  # True / False / None
         t = frame.time_s
         cmd = None
@@ -412,7 +363,7 @@ class CompetitionTracker:
                 self._begin(frame, hip)
                 self.state = CompState.DESCENDING
                 note = "moved before the command!"
-            elif self._held(t, still and locked is not False, c.setup_hold_s):
+            elif self._hold.held(t, still and locked is not False, c.setup_hold_s):
                 cmd = "SQUAT"
                 self.state = CompState.SET
                 note = "SQUAT — begin your lift"
@@ -443,7 +394,7 @@ class CompetitionTracker:
             if hip >= self._standing_hip - c.exit_fraction * scale:
                 self.state = CompState.AWAIT_LOCKOUT
                 self._lockout_entered = t
-                self._hold_start = None
+                self._hold.reset()
                 note = "hold it — wait for the rack command"
             else:
                 note = "stand it up…"
@@ -453,7 +404,7 @@ class CompetitionTracker:
                 self._early_rack = True  # broke lockout / re-descended before RACK
                 cmd = "RACK"
                 note = self._finalize(frame, "left lockout before the rack command!")
-            elif self._held(t, still, c.lockout_hold_s) or waited > c.max_lockout_wait_s:
+            elif self._hold.held(t, still, c.lockout_hold_s) or waited > c.max_lockout_wait_s:
                 if locked is False:
                     self._incomplete_lockout = True
                 cmd = "RACK"
@@ -464,15 +415,6 @@ class CompetitionTracker:
         return self._status(below, margin, hip, note, command=cmd, scale=scale)
 
     # -- helpers -------------------------------------------------------------
-
-    def _held(self, t: float, condition: bool, hold_s: float) -> bool:
-        """True once ``condition`` has held continuously for ``hold_s`` seconds."""
-        if not condition:
-            self._hold_start = None
-            return False
-        if self._hold_start is None:
-            self._hold_start = t
-        return (t - self._hold_start) >= hold_s
 
     def _begin(self, frame: FrameKeypoints3D, hip: float) -> None:
         self._cand = _Candidate(start_frame=frame.frame_idx, start_time=frame.time_s, min_hip=hip)
@@ -504,12 +446,7 @@ class CompetitionTracker:
         if self._early_rack:
             faults.append(Fault.EARLY_RACK)
 
-        if faults:
-            verdict = Verdict.NO_LIFT
-        elif not cand.had_confident:
-            verdict = Verdict.UNCERTAIN
-        else:
-            verdict = Verdict.GOOD
+        verdict = decide(faults, uncertain=not cand.had_confident)
 
         self._last_verdict = RepVerdict(
             rep_index=self._rep_count,
