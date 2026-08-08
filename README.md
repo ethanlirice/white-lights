@@ -15,8 +15,7 @@ competition mode) the referee commands issued by the computer itself.
 > browser, nothing to install.
 > The hosted link is a **UI demo only**: GitHub Pages can't run the pose model,
 > so it plays a built-in **simulator**. Real judging (webcam → YOLO → verdicts)
-> runs when you start the backend locally or deploy it — see
-> [Run](#run) and [docs/DEPLOY.md](docs/DEPLOY.md).
+> runs when you start the backend locally — see [Run](#run).
 
 <!-- Add a hero GIF here: drag a screen recording of /live into this README on github.com -->
 
@@ -99,7 +98,7 @@ api/           FastAPI app: /live, /judge, WebSocket /ws/live, pages
 web/           frontend — live.html (multi-lift judge), landing/history/stats
 tests/         99-test pytest suite + synthetic keypoint fixtures
 eval/          validation harness (agreement %, confusion matrix, latency)
-docs/          ARCHITECTURE, DEPLOY, DESIGN, ROADMAP
+docs/          ARCHITECTURE, DESIGN, ROADMAP
 ```
 
 ## Setup
@@ -134,11 +133,17 @@ python -m eval.validate --clips-dir data/clips --labels data/labels.csv
 
 There's also a terminal-only OpenCV judge: `python -m whitelights.live`.
 
-## Deploy
+## Container
 
-The whole app (pages + WebSocket) serves from one FastAPI process, so it deploys
-as a single container. A `Dockerfile` (model baked in) is included and works
-free on Hugging Face Spaces — see **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+The whole app (pages + WebSocket) serves from one FastAPI process, so it runs as
+a single container. The included `Dockerfile` bakes the pose weights in:
+
+```bash
+docker build -t white-lights .
+docker run --rm -p 7860:7860 white-lights     # → http://127.0.0.1:7860/live
+```
+
+Note that `getUserMedia` needs HTTPS everywhere except `localhost`.
 
 ## Status & metrics
 

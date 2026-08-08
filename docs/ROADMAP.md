@@ -29,7 +29,6 @@ interfaces.
 - **Threshold tuning + validation.** The numbers in every tracker are placeholders.
   Collect labelled clips and run `eval/validate.py` to measure v2 vs the v1 91%
   baseline, then tune per federation profile.
-- **Deploy the real backend** (Hugging Face Spaces — see [DEPLOY.md](DEPLOY.md)).
 
 ## Later / deferred (need new input signals)
 

@@ -1,5 +1,4 @@
 # White Lights — one container serving the pages + the /ws/live WebSocket.
-# Works locally and free on Hugging Face Spaces (Docker SDK, CPU basic).
 FROM python:3.11-slim
 
 # System libraries OpenCV (cv2) needs at import time.
@@ -7,7 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Hugging Face Spaces runs the container as uid 1000 — set up a writable home.
+# Run as a non-root user with a writable home (ultralytics needs one).
 RUN useradd -m -u 1000 user
 USER user
 ENV HOME=/home/user \
