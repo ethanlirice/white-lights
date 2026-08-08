@@ -375,6 +375,9 @@ class CompetitionTracker:
         self._early_descent = False
         self._early_rack = False
         self._incomplete_lockout = False
+        # Set by _finalize, consumed by the next _status. Keyed to "the attempt was
+        # judged", not to a particular command, so every terminal path reports.
+        self._just_completed = False
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
@@ -460,15 +463,7 @@ class CompetitionTracker:
             else:
                 note = "hold it — wait for the rack command"
 
-        return self._status(
-            below,
-            margin,
-            hip,
-            note,
-            command=cmd,
-            completed=(self.state == CompState.DONE and cmd == "RACK"),
-            scale=scale,
-        )
+        return self._status(below, margin, hip, note, command=cmd, scale=scale)
 
     # -- helpers -------------------------------------------------------------
 
@@ -528,6 +523,7 @@ class CompetitionTracker:
         )
         self._rep_count += 1
         self.state = CompState.DONE
+        self._just_completed = True
         return note
 
     def _frac(self, hip: float, scale: float) -> float:
@@ -543,10 +539,10 @@ class CompetitionTracker:
         note: str,
         *,
         command: str | None = None,
-        completed: bool = False,
         scale: float | None = None,
     ) -> LiveStatus:
         frac = self._frac(hip, scale) if (hip is not None and scale) else None
+        completed, self._just_completed = self._just_completed, False
         return LiveStatus(
             state=self.state,
             note=note,

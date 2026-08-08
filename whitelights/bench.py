@@ -120,6 +120,8 @@ class BenchTracker:
         self._early_rack = False
         self._incomplete_lockout = False
         self._lockout_uncertain = False
+        # Set by _finalize, consumed by the next _status — see DeadliftTracker.
+        self._just_completed = False
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
@@ -275,6 +277,7 @@ class BenchTracker:
         )
         self._rep_count += 1
         self.state = BenchState.DONE
+        self._just_completed = True
         return note
 
     def _status(
@@ -289,6 +292,7 @@ class BenchTracker:
         if wrist is not None and self._top_z is not None and scale:
             reach = self.config.min_touch_fraction * scale
             frac = max(0.0, min(1.0, (self._top_z - wrist) / reach)) if reach else None
+        completed, self._just_completed = self._just_completed, False
         return LiveStatus(
             state=self.state,
             note=note,
@@ -300,7 +304,7 @@ class BenchTracker:
             descent_fraction=frac,
             rep_count=self._rep_count,
             last_verdict=self._last_verdict,
-            rep_completed=(self.state == BenchState.DONE and command == "RACK"),
+            rep_completed=completed,
             command=command,
         )
 

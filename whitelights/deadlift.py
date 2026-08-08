@@ -110,6 +110,10 @@ class DeadliftTracker:
         self._incomplete = False
         self._early_down = False
         self._uncertain = False
+        # Set by _finalize, consumed by the next _status. Completion is a property
+        # of having judged the attempt, not of which command happened to be issued
+        # — the abort path (never locked out) finalises without a command.
+        self._just_completed = False
 
     def update(self, frame: FrameKeypoints3D, depth: DepthFrameResult) -> LiveStatus:
         c = self.config
@@ -235,6 +239,7 @@ class DeadliftTracker:
         )
         self._rep_count += 1
         self.state = DeadliftState.DONE
+        self._just_completed = True
         return note
 
     def _status(
@@ -249,6 +254,7 @@ class DeadliftTracker:
         frac = None
         if bar is not None and self._floor is not None and scale:
             frac = max(0.0, min(1.0, (bar - self._floor) / scale))
+        completed, self._just_completed = self._just_completed, False
         return LiveStatus(
             state=self.state,
             note=note,
@@ -260,7 +266,7 @@ class DeadliftTracker:
             descent_fraction=frac,
             rep_count=self._rep_count,
             last_verdict=self._last_verdict,
-            rep_completed=(self.state == DeadliftState.DONE and command == "DOWN"),
+            rep_completed=completed,
             command=command,
         )
 
