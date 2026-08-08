@@ -654,7 +654,7 @@
     },
     bench: {
       label: 'Bench',
-      modes: ['competition'],
+      modes: ['training', 'competition'],
       commands: ['START', 'PRESS', 'RACK'],
       checkpointLabel: 'Chest touch · lockout',
       compIntro: 'Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Start</strong>, <strong>Press</strong> and <strong>Rack</strong> for you.',
@@ -662,7 +662,7 @@
     },
     deadlift: {
       label: 'Deadlift',
-      modes: ['competition'],
+      modes: ['training', 'competition'],
       commands: ['DOWN'],
       checkpointLabel: 'Lockout light',
       compIntro: 'Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Down</strong> once you are locked out.',
@@ -694,9 +694,9 @@
     if (idx >= 0) renderTracker(idx);
   }
 
-  // Bench and deadlift have a referee-command judge only; there is no free-rep
-  // counter for them yet, so training is offered for squat alone rather than
-  // silently handing back a single-attempt competition judge.
+  // Every lift declares which modes it genuinely supports. This mirrors
+  // whitelights/judges.py TRAINING_CAPABLE — if the two disagree, the UI offers a
+  // mode the backend will not honour, which is the bug this structure prevents.
   function liftSupports(which, m){ return LIFTS[which].modes.indexOf(m) >= 0; }
 
   function syncModeAvailability(){
@@ -704,7 +704,7 @@
     modeTrainBtn.disabled = !canTrain;
     modeTrainBtn.title = canTrain
       ? ''
-      : LIFTS[lift].label + ' has a competition judge only — free-rep training is squat for now.';
+      : LIFTS[lift].label + ' has a competition judge only.';
   }
 
   function setLift(next){
