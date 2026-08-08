@@ -162,6 +162,7 @@
     color: var(--text-dim); transition: background .2s, color .2s;
   }
   #modeSwitch button.active{ background: var(--text); color: var(--bg-2); }
+  #modeSwitch button[disabled]{ opacity: .35; cursor: not-allowed; }
   #modeSwitch .lift-btn{ padding: 9px 16px; }
   .switch-divider{ width: 1px; align-self: stretch; margin: 6px 2px; background: var(--border-strong); }
 
@@ -645,6 +646,7 @@
   var LIFTS = {
     squat: {
       label: 'Squat',
+      modes: ['training', 'competition'],
       commands: ['SQUAT', 'RACK'],
       checkpointLabel: 'Depth light',
       compIntro: 'Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Squat</strong> and <strong>Rack</strong> for you.',
@@ -652,6 +654,7 @@
     },
     bench: {
       label: 'Bench',
+      modes: ['competition'],
       commands: ['START', 'PRESS', 'RACK'],
       checkpointLabel: 'Chest touch · lockout',
       compIntro: 'Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Start</strong>, <strong>Press</strong> and <strong>Rack</strong> for you.',
@@ -659,6 +662,7 @@
     },
     deadlift: {
       label: 'Deadlift',
+      modes: ['competition'],
       commands: ['DOWN'],
       checkpointLabel: 'Lockout light',
       compIntro: 'Press <strong>New Attempt</strong> to arm the platform. The system will call <strong>Down</strong> once you are locked out.',
@@ -690,12 +694,29 @@
     if (idx >= 0) renderTracker(idx);
   }
 
+  // Bench and deadlift have a referee-command judge only; there is no free-rep
+  // counter for them yet, so training is offered for squat alone rather than
+  // silently handing back a single-attempt competition judge.
+  function liftSupports(which, m){ return LIFTS[which].modes.indexOf(m) >= 0; }
+
+  function syncModeAvailability(){
+    var canTrain = liftSupports(lift, 'training');
+    modeTrainBtn.disabled = !canTrain;
+    modeTrainBtn.title = canTrain
+      ? ''
+      : LIFTS[lift].label + ' has a competition judge only — free-rep training is squat for now.';
+  }
+
   function setLift(next){
     if (!LIFTS[next] || compRunning) return;
     lift = next;
     liftBtns.forEach(function(b){ b.classList.toggle('active', b.dataset.lift === lift); });
     checkpointLabel.textContent = LIFTS[lift].checkpointLabel;
     compStatus.innerHTML = LIFTS[lift].compIntro;
+    syncModeAvailability();
+    // Switching to a lift that has no training judge moves the UI to competition
+    // (setMode re-renders and notifies the server, so return early).
+    if (!liftSupports(lift, mode)){ setMode('competition'); return; }
     renderTracker(-1);
     cmdTracker.classList.toggle('show', mode === 'competition');
     sendControl({ cmd: 'start', mode: mode, lift: lift });  // switch the server-side judge
@@ -707,7 +728,9 @@
   /* ===================== MODE SWITCH ===================== */
   var mode = 'training'; // 'training' | 'competition'
   function setMode(next){
+    if (!liftSupports(lift, next)) return;
     mode = next;
+    syncModeAvailability();
     modeTrainBtn.classList.toggle('active', mode === 'training');
     modeCompBtn.classList.toggle('active', mode === 'competition');
     trainCard.classList.toggle('hidden', mode !== 'training');
