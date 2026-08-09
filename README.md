@@ -145,12 +145,47 @@ docker run --rm -p 7860:7860 white-lights     # → http://127.0.0.1:7860/live
 
 Note that `getUserMedia` needs HTTPS everywhere except `localhost`.
 
+## Camera placement — measured
+
+Single-camera depth judging compares the hip crease and the top of the knee **in
+image rows**, which is only the same question when both sit at the same distance
+from the lens. `eval/geometry.py` measures how far that holds: it projects a
+sagittally realistic squat through a virtual camera, runs the result back through
+the real pipeline, and compares against ground truth from the 3D trace it started
+from — so it needs no footage.
+
+```bash
+python -m eval.geometry          # operating envelope
+```
+
+| true depth below parallel | camera may be off-axis by | pitch ±40° | height 0.3–2.2 m |
+|---|---|---|---|
+| 8 cm | 82° | ok | ok |
+| 4 cm | 42° | ok | ok |
+| 2 cm | 18° | fails | ok |
+| ≤1 cm | — | fails | fails |
+
+**Two findings.** *Yaw is what matters* — pitch is a pure rotation about the lens
+(a homography), so it cannot reorder two points vertically and therefore cannot
+flip a hip-vs-knee row comparison; height leaves hip and knee in nearly the same
+depth plane. Swinging **off-axis** is different: it rotates the knees' forward
+travel into the depth axis, creating exactly the parallax one view cannot
+recover. *And the landmark mattered more than the lens* — the judge was measuring
+the hip **joint**, not the **crease**, a constant bias that missed every
+below-parallel frame on a borderline rep until `hip_crease_thigh_fraction` was
+added.
+
+Practical version: **film square to the platform.** Height and tilt are forgiving;
+rotation is not, and the shallower the rep the less of it you get.
+
 ## Status & metrics
 
 v1 was validated at **91% agreement on 5,000+ reps under competition conditions**;
 v2 is this ground-up rebuild and **revalidation is in progress** — no v2 accuracy
-numbers are claimed yet. The `eval/` harness is how v2 gets measured once labelled
-clips exist. Roadmap: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
+numbers are claimed yet. The geometry envelope above is a *bound on the method*,
+not an accuracy measurement: it says where a correct pipeline stays correct, not
+how often this one is. Real agreement needs labelled clips through
+`eval/validate.py`. Roadmap: **[docs/ROADMAP.md](docs/ROADMAP.md)**.
 
 ## License
 

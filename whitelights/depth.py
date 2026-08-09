@@ -34,6 +34,8 @@ Implementation decisions
 
 from __future__ import annotations
 
+import math
+
 from pydantic import BaseModel, Field
 
 from .types import FrameKeypoints3D, Keypoint3D, Pose3DSequence
@@ -46,9 +48,17 @@ class DepthConfig(BaseModel):
     """Tunables for the depth judge."""
 
     min_confidence: float = Field(default=0.4, ge=0.0, le=1.0)
-    # Vertical offset (world units) from the COCO hip-joint keypoint down to the
-    # anatomical hip crease. Calibrated, not guessed. TODO(ethan).
+    # Vertical offset from the COCO hip-joint keypoint down to the anatomical hip
+    # crease, in **absolute world units**. Only meaningful once fusion produces
+    # metric 3D; in the single-camera fallback `z` is pixels, so a metric value
+    # here is off by orders of magnitude. Prefer the fraction below.
     hip_crease_offset: float = 0.0
+    # The same offset expressed as a fraction of the lifter's thigh length,
+    # measured per frame. Scale-invariant, so it means the same thing in pixel
+    # space and in metric space — matching how every other threshold in this
+    # codebase is expressed. Anatomically the crease sits roughly 0.14 thigh
+    # below the joint centre; left at 0.0 until validated against labelled clips.
+    hip_crease_thigh_fraction: float = 0.0
 
 
 class DepthFrameResult(BaseModel):
@@ -87,7 +97,8 @@ def judge_depth_frame(
         return _gated(frame, confidence=confidence)
 
     # Higher (shallower) hip crease vs. higher knee — the conservative pairing.
-    hip_crease_z = max(kp.z - config.hip_crease_offset for kp in hips)
+    offset = config.hip_crease_offset + config.hip_crease_thigh_fraction * _thigh_length(frame)
+    hip_crease_z = max(kp.z - offset for kp in hips)
     knee_top_z = max(kp.z for kp in knees)
     margin = knee_top_z - hip_crease_z
 
@@ -99,6 +110,21 @@ def judge_depth_frame(
         confidence=confidence,
         gated=False,
     )
+
+
+def _thigh_length(frame: FrameKeypoints3D) -> float:
+    """Mean hip->knee distance, the body reference the crease fraction scales.
+
+    Returns 0.0 when unmeasurable, which makes the fractional offset a no-op
+    rather than a guess.
+    """
+    lengths: list[float] = []
+    for side in ("left", "right"):
+        hip, knee = frame.get(f"{side}_hip"), frame.get(f"{side}_knee")
+        if hip is None or knee is None:
+            continue
+        lengths.append(math.dist((hip.x, hip.y, hip.z), (knee.x, knee.y, knee.z)))
+    return sum(lengths) / len(lengths) if lengths else 0.0
 
 
 def _gated(frame: FrameKeypoints3D, *, confidence: float) -> DepthFrameResult:
