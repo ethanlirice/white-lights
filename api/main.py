@@ -7,14 +7,22 @@ GET  /live     -> serves the live webcam judge UI (web/live.html)
 GET  /history  -> serves the training-history page (web/history.html)
 GET  /stats    -> serves the stats page (web/stats.html)
 GET  /upload   -> serves the batch upload UI (web/upload.html)
+GET  /metrics  -> per-stage live latency, capacity and pool state as JSON
 POST /judge    -> accepts one or more video uploads, runs the batch pipeline,
                  returns per-rep verdicts as JSON.
 WS   /ws/live  -> streams JPEG frames in, returns per-frame keypoints + the live
                  tracker's reasoning as JSON (one response per frame).
 
-Deliberately minimal: no database, no auth. Run with::
+Deliberately minimal: no database, no auth. Inference runs on a shared, bounded
+pool of pre-warmed models (see `api.runtime`) rather than one model per
+connection, and sockets beyond the capacity limit are shed with an explicit
+"busy" rather than quietly degrading everyone. Run with::
 
-    uvicorn api.main:app --reload
+    uvicorn api.main:app
+
+Capacity is tunable without code changes::
+
+    WL_MAX_WORKERS=4 WL_MAX_CONNECTIONS=8 uvicorn api.main:app
 """
 
 from __future__ import annotations
@@ -23,6 +31,7 @@ import asyncio
 import json
 import shutil
 import tempfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -30,19 +39,38 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, W
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import ValidationError
 
+from api.runtime import InferenceRuntime, ServerBusy, StageTimings, timed
 from whitelights.pipeline import judge_video
 from whitelights.types import JudgeResult, RefereeCommand
 
 if TYPE_CHECKING:
-    from whitelights.live import LiveJudge, LiveStatus
-    from whitelights.types import FrameKeypoints
+    from whitelights.live import LiveJudge
+    from whitelights.pose import PoseEstimator
+    from whitelights.types import FrameKeypoints, LiveStatus
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
+
+#: Shared across every connection: a bounded pool of warm models plus the
+#: latency window reported at /metrics. See api/runtime.py for why it is a pool
+#: rather than a single instance.
+runtime = InferenceRuntime()
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Warm the models at boot so the first lifter is not the one who waits."""
+    runtime.start()
+    try:
+        yield
+    finally:
+        runtime.stop()
+
 
 app = FastAPI(
     title="White Lights",
     version="2.0.0.dev0",
     description="Real-time computer-vision squat-depth judge for powerlifting.",
+    lifespan=lifespan,
 )
 
 
@@ -92,6 +120,17 @@ def stats_page() -> FileResponse:
     return FileResponse(WEB_DIR / "stats.html")
 
 
+@app.get("/metrics")
+def metrics() -> dict:
+    """Live-path health: per-stage frame latency, capacity, and pool state.
+
+    Split by stage on purpose — a total frame time does not tell you whether to
+    optimise the decoder, the model, or the judge, and for this pipeline the
+    answer is almost always the model.
+    """
+    return runtime.status()
+
+
 def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height: int) -> dict:
     """Build the per-frame JSON the browser renders (see web/live.html + HANDOFF.md).
 
@@ -126,56 +165,91 @@ def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height
     }
 
 
-def _process_frame_bytes(judge: LiveJudge, data: bytes) -> dict:
-    """Decode a JPEG frame and run one live-judging step (runs off-thread)."""
+def _process_frame_bytes(
+    judge: LiveJudge, estimator: PoseEstimator, data: bytes
+) -> tuple[dict, StageTimings]:
+    """Decode a JPEG frame and run one live-judging step (runs off-thread).
+
+    Timed by stage — decode, model, judge — because "the frame took 90 ms" is
+    not actionable but "the model took 84 ms of it" is.
+    """
     import cv2
     import numpy as np
 
-    arr = np.frombuffer(data, dtype=np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    timings = StageTimings()
+    with timed(timings, "decode_ms"):
+        arr = np.frombuffer(data, dtype=np.uint8)
+        img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
-        return {"error": "could not decode frame"}
+        return {"error": "could not decode frame"}, timings
+
     height, width = img.shape[:2]
-    frame2d, _depth, status = judge.process_frame(img)
-    return live_payload(frame2d, status, width, height)
+    judge.estimator = estimator  # this thread's model, borrowed from the pool
+    with timed(timings, "inference_ms"):
+        frame2d, _depth, status = judge.process_frame(img)
+    with timed(timings, "judge_ms"):
+        payload = live_payload(frame2d, status, width, height)
+    return payload, timings
+
+
+def _run_frame(judge: LiveJudge, data: bytes) -> tuple[dict, StageTimings]:
+    """Borrow a model from the pool for the duration of one frame."""
+    with runtime.borrow() as estimator:
+        return _process_frame_bytes(judge, estimator, data)
 
 
 @app.websocket("/ws/live")
 async def ws_live(ws: WebSocket) -> None:
-    """Receive JPEG frames, return per-frame keypoints + tracker reasoning."""
+    """Receive JPEG frames, return per-frame keypoints + tracker reasoning.
+
+    Capacity is shed, not queued: a client made to wait in line for a real-time
+    video socket has a worse experience than one told plainly to come back.
+    """
     await ws.accept()
+    try:
+        with runtime.connection_slot():
+            await _stream_frames(ws)
+    except ServerBusy as exc:
+        await ws.send_json({"error": str(exc), "retry": True})
+        await ws.close(code=1013)  # "try again later"
+    except WebSocketDisconnect:
+        return
+
+
+async def _stream_frames(ws: WebSocket) -> None:
     from whitelights.live import LiveJudge
+
+    # The estimator is swapped in per frame from the shared pool; this one is a
+    # cheap placeholder so LiveJudge has something to hold.
     from whitelights.pose import PoseEstimator
 
     judge = LiveJudge(PoseEstimator())
-    loop = asyncio.get_event_loop()
-    try:
-        while True:
-            message = await ws.receive()
-            if message["type"] == "websocket.disconnect":
-                return
-            # Text frames are control messages (e.g. {"cmd": "reset"} to start a set).
-            text = message.get("text")
-            if text is not None:
-                _handle_control(judge, text)
-                continue
-            data = message.get("bytes")
-            if not data:
-                continue
-            try:
-                payload = await loop.run_in_executor(None, _process_frame_bytes, judge, data)
-            except ModuleNotFoundError as exc:
-                await ws.send_json(
-                    {"error": f"pose runtime not installed ({exc.name}); pip install -e '.[cv]'"}
-                )
-                await ws.close()
-                return
-            except Exception as exc:  # noqa: BLE001 - keep the socket alive on a bad frame
-                await ws.send_json({"error": str(exc)})
-                continue
-            await ws.send_json(payload)
-    except WebSocketDisconnect:
-        return
+    loop = asyncio.get_running_loop()
+    while True:
+        message = await ws.receive()
+        if message["type"] == "websocket.disconnect":
+            return
+        # Text frames are control messages (e.g. {"cmd": "reset"} to start a set).
+        text = message.get("text")
+        if text is not None:
+            _handle_control(judge, text)
+            continue
+        data = message.get("bytes")
+        if not data:
+            continue
+        try:
+            payload, timings = await loop.run_in_executor(runtime.executor, _run_frame, judge, data)
+        except ModuleNotFoundError as exc:
+            await ws.send_json(
+                {"error": f"pose runtime not installed ({exc.name}); pip install -e '.[cv]'"}
+            )
+            await ws.close()
+            return
+        except Exception as exc:  # noqa: BLE001 - keep the socket alive on a bad frame
+            await ws.send_json({"error": str(exc)})
+            continue
+        runtime.latency.record(timings)
+        await ws.send_json(payload)
 
 
 def _handle_control(judge: LiveJudge, text: str) -> None:

@@ -125,6 +125,18 @@ uvicorn api.main:app                 # → http://127.0.0.1:8000/live
 Open **`/live`**, allow the camera, pick your lift + mode, and go. (Avoid
 `--reload` — it watches the whole `.venv` and thrashes on torch's files.)
 
+Inference runs on a **bounded pool of pre-warmed models**, so no lifter pays the
+model-load cost and memory cannot grow with connections. Sockets beyond capacity
+are shed with an explicit "busy" rather than quietly degrading everyone already
+connected. Both limits are tunable, and `/metrics` reports per-stage frame
+latency (decode / model / judge), so the bottleneck is visible rather than
+guessed:
+
+```bash
+WL_MAX_WORKERS=4 WL_MAX_CONNECTIONS=8 uvicorn api.main:app
+curl -s localhost:8000/metrics
+```
+
 ```bash
 pytest                               # 99 tests
 ruff check . && ruff format --check .
