@@ -37,6 +37,7 @@ dev = [
     "pytest>=8.0",
     "ruff==0.15.21",
     "httpx>=0.27",
+    "mypy>=1.11",
 ]
 
 [tool.setuptools]
@@ -59,3 +60,14 @@ select = ["E", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 # FastAPI's `= File(...)` / `= Depends(...)` defaults trip B008 by design.
 "api/*" = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["whitelights", "api", "eval"]
+# ultralytics / cv2 / torch ship no usable stubs, and they are an optional extra
+# that CI does not install at all.
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+# Tests are excluded on purpose: they are written against fixtures whose shapes
+# are obvious in context, and annotating them fully buys little.

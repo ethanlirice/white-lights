@@ -20,15 +20,31 @@ interfaces.
   lift selector in the UI. Generic `checkpoint` / `command` / `progress` contract.
 - **UI redesign.** Multi-page app (live / landing / history / stats), per-lift
   checkpoint light + command tracker, in-browser history.
-- **Tooling.** 99-test suite, CI (ruff + pytest), Pages demo, Dockerfile.
+- **Tooling.** 176-test suite including a wire-contract layer, CI (ruff + mypy +
+  pytest), Pages demo, Dockerfile.
+- **Free-reps judges for bench & deadlift.** One `FreeRepTracker` serves both,
+  working in travel-from-rest so the two directions share a code path.
+- **Shared tracker machinery.** `tracking.py` holds the signal/scale/stillness/
+  hold-timer/verdict logic all five judges were duplicating.
+- **Camera-geometry envelope.** `eval/geometry.py` projects known 3D traces
+  through a virtual camera to measure placement sensitivity — no footage needed.
+  Found the landmark (hip joint vs crease) mattered more than the lens, and that
+  yaw is the only camera axis that moves the call.
+- **Production real-time path.** Bounded pool of pre-warmed models, explicit load
+  shedding, per-stage latency at `/metrics`.
+- **Keypoint traces.** `eval/traces.py` saves pose output as JSON so validation
+  runs torch-free in CI, and fixtures can be committed without redistributing
+  footage.
 
 ## Next
 
-- **Free-reps judges for bench & deadlift.** They currently reuse their
-  competition judge in both modes; training mode needs a free-rep counter.
 - **Threshold tuning + validation.** The numbers in every tracker are placeholders.
-  Collect labelled clips and run `eval/validate.py` to measure v2 vs the v1 91%
-  baseline, then tune per federation profile.
+  Collect labelled clips, extract traces, and run `eval/validate.py` to measure v2
+  against the v1 91% baseline, then tune per federation profile.
+- **Ship `hip_crease_thigh_fraction`.** The geometry harness fits ~0.29 of thigh
+  against a model whose true value is 0.14; the gap is real (the thigh
+  foreshortens badly at the bottom of a squat, making it a shaky reference there).
+  It defaults to 0.0 until labelled clips settle it.
 
 ## Later / deferred (need new input signals)
 

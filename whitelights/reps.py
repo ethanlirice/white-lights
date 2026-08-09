@@ -52,6 +52,7 @@ no-ops when the needed keypoints (knees/ankles) are absent.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -127,30 +128,36 @@ def segment_reps(
     ]
 
 
-def _hip_z_series(poses: Pose3DSequence) -> list[float | None]:
-    """Mean vertical hip position per frame (forward/back-filled over gaps)."""
-    series: list[float | None] = []
+def _hip_z_series(poses: Pose3DSequence) -> list[float]:
+    """Mean vertical hip position per frame, forward/back-filled over gaps.
+
+    Returns an empty list when no frame has a usable hip, so callers get a
+    gap-free signal or nothing — never a sequence with holes in it.
+    """
+    raw: list[float | None] = []
     for f in poses.frames:
         zs = [kp.z for name in _HIP_KEYPOINTS if (kp := f.get(name)) is not None]
-        series.append(sum(zs) / len(zs) if zs else None)
+        raw.append(sum(zs) / len(zs) if zs else None)
 
-    # Forward-fill then back-fill so motion detection sees a continuous signal.
-    last: float | None = None
-    for i, v in enumerate(series):
-        if v is None:
-            series[i] = last
-        else:
-            last = v
-    first_known = next((v for v in series if v is not None), None)
-    return [first_known if v is None else v for v in series]
-
-
-def _segment_indices(hip_z: list[float | None], config: RepConfig) -> list[tuple[int, int]]:
-    """Find (start, end) index pairs for each rep via hysteresis on hip height."""
-    values = [v for v in hip_z if v is not None]
-    if len(values) < 3:
+    first_known = next((v for v in raw if v is not None), None)
+    if first_known is None:
         return []
-    top, bottom = max(values), min(values)
+
+    # Forward-fill, then back-fill the leading gap, so motion detection sees a
+    # continuous signal.
+    series: list[float] = []
+    last = first_known
+    for v in raw:
+        last = v if v is not None else last
+        series.append(last)
+    return series
+
+
+def _segment_indices(hip_z: list[float], config: RepConfig) -> list[tuple[int, int]]:
+    """Find (start, end) index pairs for each rep via hysteresis on hip height."""
+    if len(hip_z) < 3:
+        return []
+    top, bottom = max(hip_z), min(hip_z)
     travel = top - bottom
     if travel < config.min_descent_travel:
         return []
@@ -163,8 +170,6 @@ def _segment_indices(hip_z: list[float | None], config: RepConfig) -> list[tuple
     start = 0
     last_top_idx = 0
     for i, v in enumerate(hip_z):
-        if v is None:
-            continue
         if not descending:
             if v >= exit_up:
                 last_top_idx = i
@@ -186,7 +191,7 @@ def _verdict_for_segment(
     end: int,
     poses: Pose3DSequence,
     depth_results: list[DepthFrameResult],
-    hip_z: list[float | None],
+    hip_z: list[float],
     commands: list[RefereeCommand] | None,
     config: RepConfig,
 ) -> RepVerdict:
@@ -194,7 +199,7 @@ def _verdict_for_segment(
     seg_depth = [depth_results[i] for i in range(start, end + 1) if i < len(depth_results)]
     confident = [d for d in seg_depth if not d.gated and d.depth_margin is not None]
 
-    common = {
+    common: dict[str, Any] = {
         "rep_index": rep_index,
         "start_frame": frames[start].frame_idx,
         "end_frame": frames[end].frame_idx,
@@ -222,7 +227,7 @@ def _verdict_for_segment(
     # apart on what a faulted-but-borderline attempt is.
     verdict = decide(faults, uncertain=not depth_known)
 
-    deepest = max(confident, key=lambda d: d.depth_margin) if confident else None
+    deepest = max(confident, key=lambda d: d.depth_margin or 0.0) if confident else None
     return RepVerdict(
         verdict=verdict,
         confidence=deepest.confidence if deepest else 0.0,
@@ -233,15 +238,13 @@ def _verdict_for_segment(
     )
 
 
-def _has_downward_movement(
-    hip_z: list[float | None], start: int, end: int, config: RepConfig
-) -> bool:
+def _has_downward_movement(hip_z: list[float], start: int, end: int, config: RepConfig) -> bool:
     """True if the hip re-descends past the running ascent peak after the bottom.
 
     The threshold is a fraction of the rep's hip travel (scale-invariant) with an
     absolute floor, so it behaves the same in pixel and metric ``z``.
     """
-    values = [(i, hip_z[i]) for i in range(start, end + 1) if hip_z[i] is not None]
+    values = [(i, hip_z[i]) for i in range(start, end + 1) if i < len(hip_z)]
     if len(values) < 3:
         return False
 

@@ -193,6 +193,8 @@ class OnlineRepTracker:
 
     def _complete(self, frame: FrameKeypoints3D, scale: float) -> tuple[bool, str]:
         c = self.config
+        if self._standing_hip is None:  # unreachable: a rep cannot start without one
+            return False, "no standing reference"
         depth_drop = self._standing_hip - self._cand.min_hip
         duration = frame.time_s - self._cand.start_time
         if depth_drop < c.min_rep_depth_fraction * scale or duration < c.min_rep_duration_s:

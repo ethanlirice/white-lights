@@ -129,9 +129,15 @@ def _interpolate_gaps(series: list[_Sample], max_gap_frames: int) -> list[_Sampl
             j += 1
         left, right = i - 1, j
         gap_len = j - i
-        if left >= 0 and right < n and gap_len <= max_gap_frames:
-            x0, y0, c0 = series[left]
-            x1, y1, c1 = series[right]
+        # Anchors must exist on both sides. Reading them out of `out` rather than
+        # `series` is equivalent — the scan only ever resumes past a filled gap,
+        # so an anchor is never itself interpolated — and it lets the None check
+        # narrow the values instead of relying on that argument holding.
+        before = out[left] if left >= 0 else None
+        after = out[right] if right < n else None
+        if before is not None and after is not None and gap_len <= max_gap_frames:
+            x0, y0, c0 = before
+            x1, y1, c1 = after
             span = right - left
             for k in range(i, j):
                 t = (k - left) / span

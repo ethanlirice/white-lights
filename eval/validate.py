@@ -33,7 +33,8 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from whitelights.pipeline import judge_video
+from eval.traces import load_trace, trace_path
+from whitelights.pipeline import judge_sequences, judge_video
 from whitelights.types import RepVerdict, Verdict
 
 # Fixed class order for reports / confusion matrix.
@@ -136,15 +137,24 @@ def reduce_reps_to_call(reps: list[RepVerdict]) -> str | None:
     return primary.verdict.value
 
 
-def _judge_clip(clips_dir: Path, filename: str) -> tuple[str | None, float, str | None]:
-    """Judge one clip and reduce it to a single call.
+def _judge_clip(
+    clips_dir: Path | None, filename: str, traces_dir: Path | None = None
+) -> tuple[str | None, float, str | None]:
+    """Judge one clip — from a saved trace when available, else from video.
 
-    Returns ``(predicted_or_None, latency_ms, error_or_None)``.
+    Traces are preferred because they need no model, which is what lets the whole
+    harness run in CI. Returns ``(predicted_or_None, latency_ms, error_or_None)``.
     """
-    path = clips_dir / filename
     started = time.perf_counter()
     try:
-        result = judge_video(path)
+        if traces_dir is not None:
+            result = judge_sequences(
+                [load_trace(trace_path(traces_dir, filename))], source=filename
+            )
+        elif clips_dir is not None:
+            result = judge_video(clips_dir / filename)
+        else:
+            raise ValueError("need either --clips-dir or --traces-dir")
     except Exception as exc:  # noqa: BLE001 - harness must survive a bad clip
         return None, (time.perf_counter() - started) * 1000.0, f"{type(exc).__name__}: {exc}"
     latency_ms = (time.perf_counter() - started) * 1000.0
@@ -154,10 +164,10 @@ def _judge_clip(clips_dir: Path, filename: str) -> tuple[str | None, float, str 
     return call, latency_ms, None
 
 
-def run(clips_dir: Path, labels_csv: Path) -> Report:
+def run(clips_dir: Path | None, labels_csv: Path, traces_dir: Path | None = None) -> Report:
     report = Report()
     for filename, true_call in load_labels(labels_csv):
-        predicted, latency_ms, error = _judge_clip(clips_dir, filename)
+        predicted, latency_ms, error = _judge_clip(clips_dir, filename, traces_dir)
         report.results.append(
             ClipResult(
                 filename=filename,
@@ -232,12 +242,19 @@ def print_report(report: Report) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="White Lights validation harness")
-    parser.add_argument("--clips-dir", type=Path, required=True, help="Directory of clips")
+    parser.add_argument("--clips-dir", type=Path, help="Directory of video clips (needs [cv])")
+    parser.add_argument(
+        "--traces-dir",
+        type=Path,
+        help="Directory of saved keypoint traces — no model required, runs in CI",
+    )
     parser.add_argument("--labels", type=Path, required=True, help="labels CSV")
     parser.add_argument("--json", action="store_true", help="Emit the report as JSON")
     args = parser.parse_args()
+    if args.clips_dir is None and args.traces_dir is None:
+        parser.error("pass --traces-dir (preferred) or --clips-dir")
 
-    report = run(args.clips_dir, args.labels)
+    report = run(args.clips_dir, args.labels, args.traces_dir)
     if args.json:
         print(json.dumps(report.to_dict(), indent=2))
     else:

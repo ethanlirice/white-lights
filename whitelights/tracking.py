@@ -65,16 +65,18 @@ def segment_length(
     """
     lengths: list[float] = []
     for side in SIDES:
-        points = [frame.get(f"{side}_{joint}") for joint in chain]
-        if any(p is None for p in points):
+        found = [frame.get(f"{side}_{joint}") for joint in chain]
+        points = [p for p in found if p is not None]
+        if len(points) != len(chain):  # a side missing any link is skipped whole
             continue
-        if min(p.confidence for p in points) < min_confidence:  # type: ignore[union-attr]
+        if min(p.confidence for p in points) < min_confidence:
             continue
-        total = sum(
-            math.dist((a.x, a.y, a.z), (b.x, b.y, b.z))  # type: ignore[union-attr]
-            for a, b in zip(points, points[1:], strict=False)
+        lengths.append(
+            sum(
+                math.dist((a.x, a.y, a.z), (b.x, b.y, b.z))
+                for a, b in zip(points, points[1:], strict=False)
+            )
         )
-        lengths.append(total)
     return sum(lengths) / len(lengths) if lengths else None
 
 

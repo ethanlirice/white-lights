@@ -6,7 +6,7 @@ against the federation rulebook, live, with the exact fault flagged and (in
 competition mode) the referee commands issued by the computer itself.
 
 [![CI](https://github.com/ethanlirice/white-lights/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanlirice/white-lights/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-99%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-176%20passing-brightgreen)](tests/)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![ruff](https://img.shields.io/badge/lint-ruff-261230)](https://docs.astral.sh/ruff/)
@@ -23,8 +23,9 @@ competition mode) the referee commands issued by the computer itself.
 
 ## What it does
 
-Two modes, three lifts (**squat** fully live; **bench** and **deadlift** working
-drafts):
+Two modes, three lifts. All six combinations run a judge built for that
+combination — no lift borrows another's. Thresholds are still unvalidated
+placeholders (see [Status](#status--metrics)):
 
 -  **Training** — free reps: pick a weight, start a set, get a live GOOD /
   NO&nbsp;LIFT call on every rep, log your set history (in-browser, exportable).
@@ -74,14 +75,21 @@ module map, and the design decisions behind it.
 - **Batch *and* online.** The IPF rulebook is expressed once and runs both as a
   whole-clip batch pipeline and as causal, frame-by-frame state machines for live
   judging.
-- **Generic lift abstraction.** Squat / bench / deadlift share the machinery
-  (stillness, joint-angle lockout, downward-movement, command sandwich); each lift
-  is a small config of signal + checkpoint + command sequence.
+- **Shared tracker machinery, separate state graphs.** Every judge draws its
+  signal, body-scale reference, stillness test, command hold timer and verdict
+  rule from one module (`tracking.py`), so the batch and live paths cannot drift
+  apart on what a fault means. The *state graphs* stay separate on purpose: the
+  deadlift has no return phase, the bench has a mid-lift `PRESS`, and forcing
+  those into one parameterised graph reads worse than three explicit ones. Free
+  reps are the exception — every rep cycle really is out-and-back, so one tracker
+  serves all three lifts by working in travel-from-rest.
 - **Designed around model uncertainty.** Confidence-gating, a first-class
   **UNCERTAIN** verdict, per-lifter lockout calibration, and IPF/USAPL strictness
   profiles — because a pose estimator's "locked out" is never a clean 180°.
-- **Tested & typed.** 99 tests over deterministic synthetic-keypoint fixtures,
-  full type hints, CI (ruff + pytest) on every push.
+- **Tested & typed.** 176 tests over deterministic synthetic-keypoint fixtures —
+  including a wire-contract suite that asserts on the JSON the browser actually
+  receives, not just on tracker internals. Full type hints, checked: CI runs
+  ruff + **mypy** + pytest on every push.
 
 ## Tech stack
 
@@ -93,11 +101,12 @@ module map, and the design decisions behind it.
 
 ```
 whitelights/   core package — pose, smoothing, fusion, depth, reps, posture,
-               live (online trackers), bench, deadlift, judges, pipeline, types
-api/           FastAPI app: /live, /judge, WebSocket /ws/live, pages
+               tracking (shared judge machinery), live/bench/deadlift/freereps
+               (online judges), camera, judges, pipeline, types, cli
+api/           FastAPI app: /live, /judge, /metrics, WebSocket /ws/live, pages
 web/           frontend — live.html (multi-lift judge), landing/history/stats
-tests/         99-test pytest suite + synthetic keypoint fixtures
-eval/          validation harness (agreement %, confusion matrix, latency)
+tests/         176-test pytest suite + synthetic keypoint fixtures
+eval/          validation harness, keypoint traces, camera-geometry sweep
 docs/          ARCHITECTURE, DESIGN, ROADMAP
 ```
 
@@ -111,7 +120,7 @@ pip install -e ".[cv,api,dev]"      # pose model + API + dev tools
 ```
 
 Dependencies are split into extras so tests/CI stay fast: `cv` (ultralytics +
-opencv, pulls torch), `api` (fastapi + uvicorn), `dev` (pytest + ruff). The
+opencv, pulls torch), `api` (fastapi + uvicorn), `dev` (pytest + ruff + mypy). The
 `yolo11n-pose.pt` weights auto-download on first run.
 
 ## Run
@@ -138,12 +147,14 @@ curl -s localhost:8000/metrics
 ```
 
 ```bash
-pytest                               # 99 tests
-ruff check . && ruff format --check .
-python -m eval.validate --clips-dir data/clips --labels data/labels.csv
+pytest                               # 176 tests
+ruff check . && ruff format --check . && mypy
+python -m eval.geometry                         # camera-placement envelope
+python -m eval.traces extract --clips-dir data/clips --out data/traces
+python -m eval.validate --traces-dir data/traces --labels data/labels.csv
 ```
 
-There's also a terminal-only OpenCV judge: `python -m whitelights.live`.
+There's also a terminal-only OpenCV judge: `python -m whitelights.cli`.
 
 ## Container
 
