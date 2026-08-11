@@ -1,61 +1,159 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>White Lights — Squat Depth Judge</title>
-  <style>
-    :root { color-scheme: light dark; }
-    * { box-sizing: border-box; }
-    body {
-      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-      max-width: 640px; margin: 0 auto; padding: 2rem 1.25rem; line-height: 1.5;
-    }
-    h1 { margin-bottom: .25rem; }
-    .sub { opacity: .7; margin-top: 0; }
-    form {
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-      border-radius: 12px; padding: 1.25rem; margin-top: 1.5rem;
-    }
-    label { display: block; font-weight: 600; margin-bottom: .4rem; }
-    input[type=file], textarea {
-      width: 100%; padding: .6rem; border-radius: 8px;
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
-      background: transparent; color: inherit; font: inherit;
-    }
-    textarea { margin-bottom: 1rem; min-height: 3.5rem; font-family: ui-monospace, monospace; }
-    .hint { font-weight: 400; opacity: .65; font-size: .85rem; }
-    button {
-      margin-top: 1rem; padding: .6rem 1.2rem; border-radius: 8px; border: 0;
-      background: #2563eb; color: #fff; font: inherit; font-weight: 600; cursor: pointer;
-    }
-    button:disabled { opacity: .5; cursor: progress; }
-    pre {
-      background: color-mix(in srgb, currentColor 8%, transparent);
-      padding: 1rem; border-radius: 8px; overflow-x: auto; white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .verdict { font-weight: 700; }
-    .GOOD { color: #16a34a; } .NO_LIFT { color: #dc2626; } .UNCERTAIN { color: #d97706; }
-    #status { margin-top: 1rem; min-height: 1.5rem; }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>White Lights — Judge a Clip</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --bg: oklch(16% 0.012 260);
+    --bg-2: oklch(12% 0.012 260);
+    --panel: oklch(20% 0.012 260 / 0.62);
+    --panel-solid: oklch(20% 0.012 260);
+    --border: oklch(100% 0 0 / 0.09);
+    --border-strong: oklch(100% 0 0 / 0.18);
+    --text: oklch(96% 0.004 90);
+    --text-dim: oklch(96% 0.004 90 / 0.58);
+    --text-faint: oklch(96% 0.004 90 / 0.34);
+    --red: oklch(58% 0.19 25);
+    --red-glow: oklch(58% 0.19 25 / 0.55);
+    --green: oklch(70% 0.17 150);
+    --green-glow: oklch(70% 0.17 150 / 0.55);
+    --amber: oklch(78% 0.15 85);
+    --amber-glow: oklch(78% 0.15 85 / 0.5);
+    --white-lamp: oklch(98% 0 0);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.7);
+    --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-condensed: "Arial Narrow", "Helvetica Neue Condensed", "Roboto Condensed", var(--font-ui);
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --radius: 18px;
+  }
+  :root[data-theme="light"]{
+    color-scheme: light;
+    --bg: oklch(96% 0.005 90);
+    --bg-2: oklch(92% 0.006 90);
+    --panel: oklch(99% 0.004 90 / 0.72);
+    --panel-solid: oklch(99% 0.004 90);
+    --border: oklch(0% 0 0 / 0.08);
+    --border-strong: oklch(0% 0 0 / 0.16);
+    --text: oklch(20% 0.01 260);
+    --text-dim: oklch(20% 0.01 260 / 0.62);
+    --text-faint: oklch(20% 0.01 260 / 0.38);
+    --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.25);
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin: 0; }
+  body{ background: var(--bg); color: var(--text); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; line-height: 1.5; }
+  a{ color: var(--text); }
+  a:hover{ color: var(--text-dim); }
+  button{ cursor: pointer; font-family: inherit; color: inherit; }
+  .condensed{ font-family: var(--font-condensed); font-stretch: condensed; font-weight: 800; letter-spacing: -0.01em; }
+  .num{ font-variant-numeric: tabular-nums; }
+  .glass{ background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); backdrop-filter: blur(20px) saturate(1.4); -webkit-backdrop-filter: blur(20px) saturate(1.4); box-shadow: var(--shadow); }
+  .wrap{ max-width: 880px; margin: 0 auto; padding: 0 20px; }
+
+  header{ position: sticky; top: 0; z-index: 10; border-bottom: 1px solid var(--border); background: color-mix(in oklch, var(--bg) 82%, transparent); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  .nav{ display: flex; align-items: center; justify-content: space-between; padding: 14px 0; gap: 16px; }
+  .brand{ display: flex; align-items: center; gap: 10px; text-decoration: none; }
+  .brand-lights{ display: flex; gap: 5px; }
+  .brand-dot{ width: 8px; height: 8px; border-radius: 50%; background: var(--white-lamp); box-shadow: 0 0 8px 1px oklch(100% 0 0 / 0.5); }
+  .brand-word{ font-size: 15px; text-transform: uppercase; }
+  .nav-links{ display: flex; align-items: center; gap: 4px; }
+  .nav-links a{ text-decoration: none; font-size: 13px; font-weight: 600; color: var(--text-dim); padding: 8px 12px; border-radius: 999px; }
+  .nav-links a:hover{ color: var(--text); background: oklch(50% 0 0 / 0.12); }
+  .nav-links a.here{ color: var(--text); background: oklch(50% 0 0 / 0.14); }
+  #themeToggle{ background: transparent; border: 0; font-size: 16px; padding: 8px 10px; line-height: 1; }
+
+  .page-head{ padding: 44px 0 20px; }
+  h1{ font-size: clamp(30px, 5vw, 44px); margin: 0; text-transform: uppercase; }
+  .page-sub{ color: var(--text-dim); font-size: 14px; margin: 6px 0 0; max-width: 560px; text-wrap: pretty; }
+
+  form{ padding: 26px 24px; display: flex; flex-direction: column; gap: 18px; }
+  .field{ display: flex; flex-direction: column; gap: 8px; }
+  label{ font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); }
+  .hint{ text-transform: none; letter-spacing: normal; color: var(--text-faint); font-size: 12px; }
+  input[type=file], textarea{
+    width: 100%; padding: 12px 14px; border-radius: 10px; font: inherit; font-size: 14px;
+    background: oklch(0% 0 0 / 0.25); border: 1px solid var(--border); color: inherit; outline: none;
+  }
+  :root[data-theme="light"] input[type=file], :root[data-theme="light"] textarea{ background: oklch(0% 0 0 / 0.05); }
+  input[type=file]:focus, textarea:focus{ border-color: var(--border-strong); }
+  input[type=file]::file-selector-button{
+    margin-right: 12px; padding: 7px 14px; border: 0; border-radius: 999px; cursor: pointer;
+    background: var(--text); color: var(--bg-2); font: inherit; font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  textarea{ min-height: 68px; font-family: var(--font-mono); font-size: 12.5px; resize: vertical; }
+  #submit{
+    align-self: flex-start; background: var(--text); color: var(--bg-2); border: 0; border-radius: 12px;
+    padding: 13px 30px; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  #submit:disabled{ opacity: .4; cursor: progress; }
+
+  #status{ margin-top: 18px; min-height: 22px; font-size: 13px; color: var(--text-dim); }
+  #status.error{ color: var(--red); }
+
+  #results{ margin-top: 8px; display: flex; flex-direction: column; gap: 10px; }
+  .rep{ padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .rep-main{ display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .rep-title{ font-size: 15px; font-weight: 700; }
+  .rep-sub{ font-size: 12px; color: var(--text-faint); }
+  .badge{ font-size: 10px; font-weight: 800; letter-spacing: 0.06em; padding: 3px 9px; border-radius: 999px; text-transform: uppercase; flex: none; }
+  .badge.GOOD{ background: var(--green-glow); color: var(--green); }
+  .badge.NO_LIFT{ background: var(--red-glow); color: var(--red); }
+  .badge.UNCERTAIN{ background: var(--amber-glow); color: var(--amber); }
+
+  details{ margin-top: 6px; }
+  summary{ cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); padding: 8px 0; }
+  summary:hover{ color: var(--text-dim); }
+  pre{
+    background: oklch(0% 0 0 / 0.25); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px; overflow-x: auto; font-family: var(--font-mono); font-size: 12px; margin: 0;
+  }
+  :root[data-theme="light"] pre{ background: oklch(0% 0 0 / 0.05); }
+
+  .note{ padding: 18px 22px; border-left: 3px solid var(--amber); font-size: 13px; color: var(--text-dim); margin-top: 26px; }
+  .note code{ font-family: var(--font-mono); font-size: 12px; background: oklch(50% 0 0 / 0.15); padding: 2px 6px; border-radius: 6px; }
+
+  footer{ padding: 50px 0 40px; text-align: center; font-size: 12px; color: var(--text-faint); }
+</style>
 </head>
 <body>
-  <h1>White Lights</h1>
-  <p class="sub">Computer-vision squat-depth judge · v2 (rebuild in progress)</p>
-  <p><a href="landing.html">← Home</a> · <a href="live.html">Live webcam judge</a> (real-time)</p>
 
-  <form id="judge-form">
-    <label for="files">Squat video(s)
-      <span class="hint">— one file, or one per camera view</span>
-    </label>
-    <input id="files" name="files" type="file" accept="video/*" multiple required />
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="landing.html">
+      <div class="brand-lights"><div class="brand-dot"></div><div class="brand-dot"></div><div class="brand-dot"></div></div>
+      <span class="brand-word condensed">White Lights</span>
+    </a>
+    <nav class="nav-links">
+      <a href="live.html">Live</a>
+      <a href="history.html">History</a>
+      <a href="stats.html">Stats</a>
+      <a class="here" href="upload.html">Upload</a>
+      <button id="themeToggle" title="Toggle theme">◐</button>
+    </nav>
+  </div>
+</header>
 
-    <label for="commands" style="margin-top:1rem">Referee commands
-      <span class="hint">— optional JSON</span>
-    </label>
-    <textarea id="commands" name="commands"
-      placeholder='[{"command":"START","time_s":2.5},{"command":"RACK","time_s":6.0}]'></textarea>
+<main class="wrap">
+  <div class="page-head">
+    <h1 class="condensed">Judge a clip</h1>
+    <p class="page-sub">Run a recorded lift through the batch pipeline — the same rulebook the live judge applies, over a whole clip at once. Every rep in the file gets its own call.</p>
+  </div>
+
+  <form id="judge-form" class="glass">
+    <div class="field">
+      <label for="files">Video <span class="hint">— one file, or one per synchronised camera view</span></label>
+      <input id="files" name="files" type="file" accept="video/*" multiple required />
+    </div>
+
+    <div class="field">
+      <label for="commands">Referee commands <span class="hint">— optional JSON; without them the clip is judged as free reps</span></label>
+      <textarea id="commands" name="commands"
+        placeholder='[{"command":"START","time_s":2.5},{"command":"RACK","time_s":6.0}]'></textarea>
+    </div>
 
     <button id="submit" type="submit">Judge</button>
   </form>
@@ -63,50 +161,102 @@
   <div id="status"></div>
   <div id="results"></div>
 
-  <script>
-    const form = document.getElementById("judge-form");
-    const statusEl = document.getElementById("status");
-    const resultsEl = document.getElementById("results");
-    const submitBtn = document.getElementById("submit");
+  <div class="note glass">
+    <strong>Needs the backend.</strong> This page posts to <code>/judge</code>, which runs the pose model
+    locally — start it with <code>uvicorn api.main:app</code>. On the hosted demo there is nothing to post to.
+  </div>
+</main>
 
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      resultsEl.innerHTML = "";
-      statusEl.textContent = "Uploading and judging…";
-      submitBtn.disabled = true;
+<footer>White Lights — v1 validated at 91% agreement on 5,000+ reps.</footer>
 
-      const data = new FormData();
-      for (const f of document.getElementById("files").files) data.append("files", f);
-      const cmds = document.getElementById("commands").value.trim();
-      if (cmds) data.append("commands", cmds);
+<script>
+(function(){
+  "use strict";
+  var root = document.documentElement;
+  if (localStorage.getItem('wl.theme') === 'light') root.setAttribute('data-theme', 'light');
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    var next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    if (next === 'dark') root.removeAttribute('data-theme'); else root.setAttribute('data-theme', 'light');
+    localStorage.setItem('wl.theme', next);
+  });
 
-      try {
-        const res = await fetch("/judge", { method: "POST", body: data });
-        const body = await res.json();
-        if (!res.ok) {
-          const msg = body?.detail?.message || body?.detail || JSON.stringify(body);
-          statusEl.textContent = `⚠️ ${res.status}: ${msg}`;
-          return;
-        }
-        statusEl.textContent = `Done in ${body.processing_ms?.toFixed(0)} ms · ${body.reps.length} rep(s)`;
-        renderResults(body);
-      } catch (err) {
-        statusEl.textContent = `Request failed: ${err}`;
-      } finally {
-        submitBtn.disabled = false;
+  var form = document.getElementById("judge-form");
+  var statusEl = document.getElementById("status");
+  var resultsEl = document.getElementById("results");
+  var submitBtn = document.getElementById("submit");
+
+  function setStatus(text, isError){
+    statusEl.textContent = text;
+    statusEl.classList.toggle('error', !!isError);
+  }
+
+  form.addEventListener("submit", async function(e){
+    e.preventDefault();
+    resultsEl.innerHTML = "";
+    setStatus("Uploading and judging…", false);
+    submitBtn.disabled = true;
+
+    var data = new FormData();
+    for (const f of document.getElementById("files").files) data.append("files", f);
+    var cmds = document.getElementById("commands").value.trim();
+    if (cmds) data.append("commands", cmds);
+
+    try {
+      var res = await fetch("/judge", { method: "POST", body: data });
+      var body = await res.json();
+      if (!res.ok) {
+        var msg = (body && body.detail && body.detail.message) || (body && body.detail) || JSON.stringify(body);
+        setStatus(res.status + ": " + msg, true);
+        return;
       }
+      var ms = body.processing_ms != null ? body.processing_ms.toFixed(0) : "?";
+      setStatus("Judged " + body.reps.length + " rep(s) in " + ms + " ms", false);
+      renderResults(body);
+    } catch (err) {
+      setStatus("Request failed: " + err, true);
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  function renderResults(body){
+    if (!body.reps || !body.reps.length) return;
+    body.reps.forEach(function(r){
+      var row = document.createElement('div');
+      row.className = 'rep glass';
+
+      var main = document.createElement('div');
+      main.className = 'rep-main';
+      var title = document.createElement('div');
+      title.className = 'rep-title';
+      title.textContent = 'Rep ' + (r.rep_index + 1);
+      var sub = document.createElement('div');
+      sub.className = 'rep-sub num';
+      var bits = ['confidence ' + (r.confidence != null ? r.confidence.toFixed(2) : '—')];
+      if (r.faults && r.faults.length) bits.push(r.faults.join(', ').toLowerCase().replace(/_/g, ' '));
+      sub.textContent = bits.join(' · ');
+      main.appendChild(title);
+      main.appendChild(sub);
+
+      var badge = document.createElement('span');
+      badge.className = 'badge ' + r.verdict;
+      badge.textContent = r.verdict.replace('_', ' ');
+
+      row.appendChild(main);
+      row.appendChild(badge);
+      resultsEl.appendChild(row);
     });
 
-    function renderResults(body) {
-      if (!body.reps?.length) return;
-      const rows = body.reps.map((r) =>
-        `<li>Rep ${r.rep_index + 1}: ` +
-        `<span class="verdict ${r.verdict}">${r.verdict}</span> ` +
-        `(conf ${r.confidence?.toFixed(2)})` +
-        (r.faults?.length ? ` — ${r.faults.join(", ")}` : "")
-      ).join("");
-      resultsEl.innerHTML = `<ul>${rows}</ul><pre>${JSON.stringify(body, null, 2)}</pre>`;
-    }
-  </script>
+    var details = document.createElement('details');
+    var summary = document.createElement('summary');
+    summary.textContent = 'Raw response';
+    var pre = document.createElement('pre');
+    pre.textContent = JSON.stringify(body, null, 2);
+    details.appendChild(summary);
+    details.appendChild(pre);
+    resultsEl.appendChild(details);
+  }
+})();
+</script>
 </body>
 </html>
