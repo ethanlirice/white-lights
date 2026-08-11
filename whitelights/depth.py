@@ -72,6 +72,12 @@ class DepthFrameResult(BaseModel):
     depth_margin: float | None = None
     confidence: float = 0.0
     gated: bool = False
+    # The two heights the call actually compares (world z, +z up). Surfaced so
+    # the overlay can *draw* the comparison instead of re-deriving it: which hip,
+    # which knee, and how far the crease offset drops the landmark are decisions
+    # made here, and a second implementation in JavaScript would drift from them.
+    hip_crease_z: float | None = None
+    knee_top_z: float | None = None
 
 
 def judge_depth_frame(
@@ -109,6 +115,8 @@ def judge_depth_frame(
         depth_margin=margin,
         confidence=confidence,
         gated=False,
+        hip_crease_z=hip_crease_z,
+        knee_top_z=knee_top_z,
     )
 
 

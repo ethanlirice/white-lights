@@ -183,6 +183,10 @@ class FreeRepTracker:
     ``reset()`` — so `LiveJudge` and the WebSocket handler stay lift-agnostic.
     """
 
+    # The free-rep specs that exist are bench and deadlift; squat free reps use
+    # `OnlineRepTracker`. See `OnlineRepTracker.judges_depth`.
+    judges_depth = False
+
     def __init__(self, spec: FreeRepSpec, config: FreeRepConfig | None = None) -> None:
         self.spec = spec
         self.config = config or FreeRepConfig()

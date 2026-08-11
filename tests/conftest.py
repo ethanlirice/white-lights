@@ -125,6 +125,11 @@ def ground_truth_depth(
                 depth_margin=None if gated else margin,
                 confidence=f.confidence,
                 gated=gated,
+                # The two heights the margin came from. Carried through so
+                # payload-level tests exercise the real overlay-geometry path
+                # instead of the "gated, nothing to draw" branch.
+                hip_crease_z=None if gated else hip_z,
+                knee_top_z=None if gated else knee_z,
             )
         )
     return results

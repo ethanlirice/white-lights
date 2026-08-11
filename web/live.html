@@ -876,6 +876,9 @@
     if (status.note) noteEl.textContent = status.note;
 
     if (Array.isArray(status.keypoints)) drawSkeleton(status.keypoints);
+    // null on a gated frame or a lift with no depth rule — draw nothing rather
+    // than a stale line, so the overlay never asserts more than the judge did.
+    lastGeometry = status.geometry || null;
 
     // Real referee commands come from the server's CompetitionTracker.
     if (mode === 'competition' && compArmed && status.command){
@@ -909,7 +912,64 @@
   window.addEventListener('resize', resizeCanvas);
 
   var lastKeypoints = null;
+  var lastGeometry = null;
   function drawSkeleton(keypoints){ lastKeypoints = keypoints; }
+
+  /* The measurement, drawn on the lifter.
+     The rule is "hip crease below the top of the knee", and these are the two
+     rows the server's depth judge actually compared — not a client-side guess at
+     them, so the picture cannot disagree with the call. */
+  var GEOM_KEYPOINTS = ['left_hip', 'right_hip', 'left_knee', 'right_knee'];
+
+  function drawDepthGeometry(g, byName, dx, dy, dw, dh, cw){
+    // Span the lifter's hips and knees, not the whole frame: a full-width rule
+    // reads as chrome, one that hugs the body reads as a measurement of it.
+    var xs = [];
+    GEOM_KEYPOINTS.forEach(function(name){
+      var kp = byName[name];
+      if (kp && kp.confidence > 0.25) xs.push(dx + kp.x * dw);
+    });
+    if (xs.length < 2) return;
+    var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs);
+    var pad = Math.max((x1 - x0) * 0.5, cw * 0.05);
+    x0 -= pad; x1 += pad;
+
+    var hipY = dy + g.hip_row * dh;
+    var kneeY = dy + g.knee_row * dh;
+    var good = g.below === true;
+    var stroke = good ? 'rgba(86, 226, 162, 0.95)' : 'rgba(255, 116, 104, 0.95)';
+    var wash = good ? 'rgba(86, 226, 162, 0.15)' : 'rgba(255, 116, 104, 0.15)';
+    var unit = Math.max(1, cw * 0.001);
+
+    // The gap under judgment — the whole lift, in one shape.
+    ctx.fillStyle = wash;
+    ctx.fillRect(x0, Math.min(hipY, kneeY), x1 - x0, Math.abs(kneeY - hipY));
+
+    ctx.lineWidth = 2 * unit;
+    ctx.strokeStyle = stroke;
+    ctx.lineCap = 'butt';
+    ctx.beginPath(); ctx.moveTo(x0, kneeY); ctx.lineTo(x1, kneeY); ctx.stroke();
+    ctx.setLineDash([10 * unit, 8 * unit]);   // the crease moves; the knee is the datum
+    ctx.beginPath(); ctx.moveTo(x0, hipY); ctx.lineTo(x1, hipY); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.font = '600 ' + (11 * unit) + 'px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = stroke;
+    ctx.fillText('KNEE', x1 + 6 * unit, kneeY);
+    ctx.fillText('HIP CREASE', x1 + 6 * unit, hipY);
+
+    // The margin is the judge's own number, in the judge's own units: single-view
+    // z is pixels of the source frame, so label it as such instead of implying cm.
+    if (typeof g.margin === 'number'){
+      ctx.textAlign = 'right';
+      ctx.font = '700 ' + (13 * unit) + 'px system-ui, sans-serif';
+      var sign = g.margin >= 0 ? '+' : '−';
+      ctx.fillText(sign + Math.abs(g.margin).toFixed(0) + ' px',
+                   x0 - 6 * unit, (hipY + kneeY) / 2);
+    }
+  }
 
   function drawFrame(){
     requestAnimationFrame(drawFrame);
@@ -931,8 +991,10 @@
         var byName = {};
         lastKeypoints.forEach(function(kp){ byName[kp.name] = kp; });
         function toCanvas(kp){ return [dx + kp.x * dw, dy + kp.y * dh]; }
-        ctx.lineWidth = Math.max(2, cw * 0.003);
-        ctx.strokeStyle = 'rgba(240,240,240,0.85)';
+        // The skeleton is context, not content — it locates the body so the
+        // measurement below has something to sit on. Kept deliberately quiet.
+        ctx.lineWidth = Math.max(1.5, cw * 0.002);
+        ctx.strokeStyle = 'rgba(235,235,235,0.42)';
         ctx.lineCap = 'round';
         SKELETON_EDGES.forEach(function(edge){
           var a = byName[edge[0]], b = byName[edge[1]];
@@ -941,13 +1003,15 @@
             ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
           }
         });
-        ctx.fillStyle = 'rgba(255,200,60,0.95)';
+        ctx.fillStyle = 'rgba(235,235,235,0.55)';
         lastKeypoints.forEach(function(kp){
           if (kp.confidence > 0.25){
             var p = toCanvas(kp);
-            ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(3, cw * 0.004), 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(p[0], p[1], Math.max(2, cw * 0.0028), 0, Math.PI * 2); ctx.fill();
           }
         });
+
+        if (lastGeometry) drawDepthGeometry(lastGeometry, byName, dx, dy, dw, dh, cw);
       }
     } else {
       ctx.fillStyle = '#000'; ctx.fillRect(0, 0, overlay.width, overlay.height);

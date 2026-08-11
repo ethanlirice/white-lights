@@ -68,7 +68,16 @@ def _drive_to_payloads(tracker, poses, depths) -> list[dict]:
     payloads = []
     for frame, depth in zip(poses.frames, depths, strict=True):
         status = tracker.update(frame, depth)
-        payloads.append(live_payload(_as_2d(frame), status, width=640, height=480))
+        payloads.append(
+            live_payload(
+                _as_2d(frame),
+                depth,
+                status,
+                width=640,
+                height=480,
+                judges_depth=tracker.judges_depth,
+            )
+        )
     return payloads
 
 
@@ -218,6 +227,7 @@ def test_payload_shape_is_stable(case) -> None:
         "note",
         "keypoints",
         "command",
+        "geometry",
     }
     for payload in _drive_to_payloads(tracker, poses, depths):
         assert required <= payload.keys()
@@ -236,3 +246,38 @@ def test_training_mode_reports_every_rep() -> None:
     for p in completed:
         assert p["verdict"] is not None
         assert p["verdict"]["verdict"] in {v.value for v in Verdict}
+
+
+def test_depth_geometry_is_drawable_and_agrees_with_the_call() -> None:
+    """The overlay's two rows must match the verdict they illustrate.
+
+    Image rows grow downwards, world z grows upwards, so the conversion inverts.
+    A sign error there would draw a perfectly plausible picture with the lines
+    swapped — nothing else in the suite would notice, because the *call* would
+    still be right. Hence asserting the relationship, not the arithmetic.
+    """
+    poses = make_full_squat_3d(_squat_attempt(0.45))
+    payloads = _drive_to_payloads(CompetitionTracker(), poses, ground_truth_depth(poses))
+    geometries = [p["geometry"] for p in payloads if p["geometry"] is not None]
+
+    assert geometries, "a squat must produce drawable depth geometry"
+    below = [g for g in geometries if g["below"] is True]
+    above = [g for g in geometries if g["below"] is False]
+    assert below and above, "this attempt passes through parallel in both directions"
+
+    # Below parallel: the hip crease is drawn *lower on screen* than the knee.
+    assert all(g["hip_row"] > g["knee_row"] for g in below)
+    assert all(g["hip_row"] < g["knee_row"] for g in above)
+    # And the sign of the margin the UI prints agrees with the shape it draws.
+    assert all(g["margin"] > 0 for g in below)
+    assert all(g["margin"] < 0 for g in above)
+
+
+def test_no_depth_geometry_for_lifts_that_do_not_judge_depth() -> None:
+    """Bench and deadlift must not be drawn a depth line they are not judged on."""
+    for tracker, poses, depths in (
+        _bench_case([TOP] * STILL + _ramp(TOP, CHEST) + _ramp(CHEST, TOP) + [TOP] * STILL),
+        _deadlift_case([FLOOR] * STILL + _ramp(FLOOR, DL_TOP) + [DL_TOP] * STILL),
+    ):
+        payloads = _drive_to_payloads(tracker, poses, depths)
+        assert all(p["geometry"] is None for p in payloads)

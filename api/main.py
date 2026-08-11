@@ -44,6 +44,7 @@ from whitelights.pipeline import judge_video
 from whitelights.types import JudgeResult, RefereeCommand
 
 if TYPE_CHECKING:
+    from whitelights.depth import DepthFrameResult
     from whitelights.live import LiveJudge
     from whitelights.pose import PoseEstimator
     from whitelights.types import FrameKeypoints, LiveStatus
@@ -131,12 +132,47 @@ def metrics() -> dict:
     return runtime.status()
 
 
-def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height: int) -> dict:
+def depth_geometry(depth: DepthFrameResult, height: int, *, judges_depth: bool) -> dict | None:
+    """The hip-crease/knee-top comparison as image rows, for the canvas overlay.
+
+    The judge works in world ``z`` (+z up); the single-view lift sets ``z = -y``
+    in pixels, so inverting it recovers the image row. Sending the rows the judge
+    actually used — rather than letting the client average two hip keypoints and
+    hope — is what keeps the overlay honest: which hip, which knee, and how far
+    the crease offset drops the landmark are decisions `depth.py` owns.
+
+    Returns ``None`` when there is nothing truthful to draw: a gated frame, or a
+    lift whose judge does not apply the depth rule at all.
+    """
+    if not judges_depth or depth.gated:
+        return None
+    if depth.hip_crease_z is None or depth.knee_top_z is None:
+        return None
+    h = height or 1
+    return {
+        "hip_row": -depth.hip_crease_z / h,
+        "knee_row": -depth.knee_top_z / h,
+        "margin": depth.depth_margin,
+        "below": depth.is_below_parallel,
+        "confidence": depth.confidence,
+    }
+
+
+def live_payload(
+    frame2d: FrameKeypoints,
+    depth: DepthFrameResult,
+    status: LiveStatus,
+    width: int,
+    height: int,
+    *,
+    judges_depth: bool = True,
+) -> dict:
     """Build the per-frame JSON the browser renders (see web/live.html + HANDOFF.md).
 
     Keypoints are a list of ``{name, x, y, confidence}`` normalised to [0, 1]
     against the processed frame size so the client can scale them to any canvas.
-    ``verdict`` is only populated on the frame a rep completes.
+    ``geometry`` is normalised the same way. ``verdict`` is only populated on the
+    frame a rep completes.
     """
     w = width or 1
     h = height or 1
@@ -162,6 +198,9 @@ def live_payload(frame2d: FrameKeypoints, status: LiveStatus, width: int, height
         "note": status.note,
         "keypoints": keypoints or None,
         "command": status.command,  # e.g. SQUAT / START / PRESS / RACK / DOWN, else None
+        # The measurement behind the call, for the overlay to draw. None when the
+        # frame is gated or the lift has no depth rule — see `depth_geometry`.
+        "geometry": depth_geometry(depth, height, judges_depth=judges_depth),
     }
 
 
@@ -186,9 +225,11 @@ def _process_frame_bytes(
     height, width = img.shape[:2]
     judge.estimator = estimator  # this thread's model, borrowed from the pool
     with timed(timings, "inference_ms"):
-        frame2d, _depth, status = judge.process_frame(img)
+        frame2d, depth, status = judge.process_frame(img)
     with timed(timings, "judge_ms"):
-        payload = live_payload(frame2d, status, width, height)
+        payload = live_payload(
+            frame2d, depth, status, width, height, judges_depth=judge.tracker.judges_depth
+        )
     return payload, timings
 
 

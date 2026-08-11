@@ -106,6 +106,8 @@ class _Bench:
 class BenchTracker:
     """Online single-attempt bench judge that issues its own START/PRESS/RACK."""
 
+    judges_depth = False  # see `OnlineRepTracker.judges_depth`
+
     def __init__(self, config: BenchConfig | None = None) -> None:
         self.config = config or BenchConfig()
         self.reset()

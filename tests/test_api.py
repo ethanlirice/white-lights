@@ -8,10 +8,12 @@ from __future__ import annotations
 
 import io
 
+import pytest
 from fastapi.testclient import TestClient
 
 import api.main as main
 from api.main import app
+from whitelights.depth import DepthFrameResult
 
 client = TestClient(app)
 
@@ -86,7 +88,23 @@ def test_live_payload_normalises_keypoints_and_verdict() -> None:
         ),
         rep_completed=True,
     )
-    payload = main.live_payload(frame, status, width=480, height=240)
+    depth = DepthFrameResult(
+        frame_idx=0,
+        time_s=0.0,
+        is_below_parallel=False,
+        depth_margin=-3.0,
+        confidence=0.9,
+        hip_crease_z=-100.0,
+        knee_top_z=-103.0,
+    )
+    payload = main.live_payload(frame, depth, status, width=480, height=240)
+
+    # geometry: the judge's own two rows, inverted back into image space and
+    # normalised like the keypoints, so the overlay can draw them directly.
+    assert payload["geometry"]["hip_row"] == pytest.approx(100.0 / 240)
+    assert payload["geometry"]["knee_row"] == pytest.approx(103.0 / 240)
+    assert payload["geometry"]["below"] is False
+    assert payload["geometry"]["margin"] == -3.0
 
     # keypoints: list of {name, x, y, confidence}, normalised to [0, 1]
     kp = next(k for k in payload["keypoints"] if k["name"] == "left_hip")
@@ -115,10 +133,45 @@ def test_live_payload_verdict_only_on_rep_completed() -> None:
     )
     from whitelights.types import FrameKeypoints
 
-    payload = main.live_payload(FrameKeypoints(frame_idx=0, time_s=0.0), status, 480, 240)
+    gated = DepthFrameResult(frame_idx=0, time_s=0.0, gated=True)
+    payload = main.live_payload(FrameKeypoints(frame_idx=0, time_s=0.0), gated, status, 480, 240)
     assert payload["verdict"] is None
     assert payload["keypoints"] is None  # no detections
     assert payload["depth_progress"] == 0.0
+    assert payload["geometry"] is None  # gated frame: nothing truthful to draw
+
+
+def test_live_payload_omits_geometry_for_lifts_without_a_depth_rule() -> None:
+    """Bench/deadlift run the depth judge but ignore it — drawing its line there
+    would assert a rule that is not being applied to the attempt."""
+    from whitelights.live import LiveState, LiveStatus
+    from whitelights.types import FrameKeypoints
+
+    status = LiveStatus(
+        state=LiveState.STANDING,
+        note="",
+        below_parallel=None,
+        depth_margin=None,
+        hip_z=None,
+        standing_ref=None,
+        descent_fraction=None,
+        rep_count=0,
+        last_verdict=None,
+        rep_completed=False,
+    )
+    depth = DepthFrameResult(
+        frame_idx=0,
+        time_s=0.0,
+        is_below_parallel=True,
+        depth_margin=5.0,
+        confidence=0.9,
+        hip_crease_z=-100.0,
+        knee_top_z=-95.0,
+    )
+    frame = FrameKeypoints(frame_idx=0, time_s=0.0)
+
+    assert main.live_payload(frame, depth, status, 480, 240, judges_depth=False)["geometry"] is None
+    assert main.live_payload(frame, depth, status, 480, 240, judges_depth=True)["geometry"]
 
 
 def test_ws_live_reports_missing_pose_runtime() -> None:

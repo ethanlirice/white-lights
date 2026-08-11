@@ -97,6 +97,12 @@ class _Candidate:
 class OnlineRepTracker:
     """Causal rep detector: fed one (frame, depth) at a time, emits verdicts."""
 
+    #: This judge's call turns on the hip-crease-vs-knee comparison, so the
+    #: overlay may draw it. False on lifts where `depth` is computed but unused —
+    #: drawing a depth line over a bench press would assert a rule that is not
+    #: being applied.
+    judges_depth = True
+
     def __init__(self, config: LiveConfig | None = None) -> None:
         self.config = config or LiveConfig()
         self.reset()
@@ -304,6 +310,8 @@ class CompetitionTracker:
     INSUFFICIENT_DEPTH, DOWNWARD_MOVEMENT, EARLY_DESCENT (moved before SQUAT),
     EARLY_RACK (left the lockout before RACK) and INCOMPLETE_LOCKOUT.
     """
+
+    judges_depth = True  # see `OnlineRepTracker.judges_depth`
 
     def __init__(self, config: CompetitionConfig | None = None) -> None:
         self.config = config or CompetitionConfig()

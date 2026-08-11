@@ -102,6 +102,8 @@ class _DL:
 class DeadliftTracker:
     """Online single-attempt deadlift judge that issues its own DOWN command."""
 
+    judges_depth = False  # see `OnlineRepTracker.judges_depth`
+
     def __init__(self, config: DeadliftConfig | None = None) -> None:
         self.config = config or DeadliftConfig()
         self.reset()
