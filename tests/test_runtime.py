@@ -106,6 +106,31 @@ def test_pool_is_bounded_by_worker_count() -> None:
         runtime.stop()
 
 
+def test_pool_does_not_double_on_restart() -> None:
+    """start() -> stop() -> a later `.executor` access must not re-fill the pool.
+
+    `stop()` tears the executor down but deliberately leaves the pool's
+    estimators in place; the lazy `.executor` property exists so tests can
+    exercise the app without running lifespan. Deriving "has the pool been
+    filled?" from "is `_executor` None?" conflates those two facts — a
+    restart-shaped sequence (real or, more likely, two tests sharing one
+    module-level runtime) would double the pool every time it recurred,
+    silently breaking the one invariant this module promises: pool size
+    bounds memory, and it is the single number to turn.
+    """
+    runtime = InferenceRuntime(max_workers=2, max_connections=4)
+    runtime.start()
+    runtime.stop()
+    assert runtime.executor is not None  # lazy path must not have crashed either
+    assert runtime._pool.qsize() == 2
+
+    # And the property alone, accessed repeatedly with no start() at all.
+    lazy_only = InferenceRuntime(max_workers=3, max_connections=4)
+    _ = lazy_only.executor
+    _ = lazy_only.executor
+    assert lazy_only._pool.qsize() == 3
+
+
 def test_start_survives_a_missing_pose_runtime() -> None:
     """CI has no `cv` extra; boot must not depend on it."""
     runtime = InferenceRuntime(max_workers=1, max_connections=1)

@@ -144,19 +144,33 @@ class InferenceRuntime:
         self._executor: ThreadPoolExecutor | None = None
         self._connections = 0
         self._warm = False
+        # Pool population is a one-time event, deliberately tracked separately
+        # from `_executor`'s lifecycle: `stop()` tears the executor down but
+        # leaves the pool's estimators in place (they're cheap and independent
+        # of it), so re-deriving "has this been filled?" from "_executor is
+        # None" double-fills the pool on a start -> stop -> executor-access
+        # sequence — see the `executor` property below.
+        self._pool_filled = False
 
     # -- lifecycle -----------------------------------------------------------
 
     def start(self) -> None:
         """Build the pool and pre-load weights. Safe without the ``cv`` extra."""
-        from whitelights.pose import PoseEstimator
-
         self._executor = ThreadPoolExecutor(
             max_workers=self.max_workers, thread_name_prefix="wl-infer"
         )
+        self._fill_pool()
+        self._warm = self._warm_up()
+
+    def _fill_pool(self) -> None:
+        """Populate the pool with ``max_workers`` estimators, exactly once."""
+        if self._pool_filled:
+            return
+        from whitelights.pose import PoseEstimator
+
         for _ in range(self.max_workers):
             self._pool.put(PoseEstimator())
-        self._warm = self._warm_up()
+        self._pool_filled = True
 
     def _warm_up(self) -> bool:
         """Touch each model so the first real frame is not the one that pays.
@@ -223,10 +237,7 @@ class InferenceRuntime:
             self._executor = ThreadPoolExecutor(
                 max_workers=self.max_workers, thread_name_prefix="wl-infer"
             )
-            from whitelights.pose import PoseEstimator
-
-            for _ in range(self.max_workers):
-                self._pool.put(PoseEstimator())
+            self._fill_pool()  # no-op if start() (or a prior access) already did
         return self._executor
 
     def status(self) -> dict[str, Any]:
