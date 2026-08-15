@@ -765,7 +765,16 @@
     // Same reasoning as the `setActive` guard in setLift() above — switching
     // mode resets the server-side tracker, and a training set in progress
     // must not survive that switch with reps from before it mixed in.
-    if (!liftSupports(lift, next) || setActive) return;
+    //
+    // `compRunning` is guarded here for a second, sharper reason: setLift()
+    // already refused to run while an attempt was armed/running, but the mode
+    // buttons were never wired to the same flag, and nothing else disables
+    // them mid-attempt (`syncModeAvailability` only reacts to which lift is
+    // selected). Click "Training Mode" mid-attempt and the server-side judge
+    // got reset under it, while `compRunning`/`compArmed` stayed true forever
+    // client-side — no code path ever clears them without a real verdict —
+    // permanently blocking `startAttempt()` and `setLift()` until reload.
+    if (!liftSupports(lift, next) || setActive || compRunning) return;
     mode = next;
     syncModeAvailability();
     modeTrainBtn.classList.toggle('active', mode === 'training');
