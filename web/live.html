@@ -736,7 +736,13 @@
   }
 
   function setLift(next){
-    if (!LIFTS[next] || compRunning) return;
+    // Blocking mid-attempt already existed (`compRunning`); mid-set did not.
+    // Without it, switching lifts while a training set is active resets the
+    // server-side tracker underneath `currentReps` without clearing it, so
+    // the set completed afterward is saved under one lift's tag while holding
+    // verdicts judged under whichever lifts were actually selected along the
+    // way — see `setActive` in the training-set handler below.
+    if (!LIFTS[next] || compRunning || setActive) return;
     lift = next;
     liftBtns.forEach(function(b){ b.classList.toggle('active', b.dataset.lift === lift); });
     checkpointLabel.textContent = LIFTS[lift].checkpointLabel;
@@ -756,7 +762,10 @@
   /* ===================== MODE SWITCH ===================== */
   var mode = 'training'; // 'training' | 'competition'
   function setMode(next){
-    if (!liftSupports(lift, next)) return;
+    // Same reasoning as the `setActive` guard in setLift() above — switching
+    // mode resets the server-side tracker, and a training set in progress
+    // must not survive that switch with reps from before it mixed in.
+    if (!liftSupports(lift, next) || setActive) return;
     mode = next;
     syncModeAvailability();
     modeTrainBtn.classList.toggle('active', mode === 'training');
