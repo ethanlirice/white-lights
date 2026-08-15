@@ -258,9 +258,17 @@
     log.innerHTML = '';
     if (!list.length){
       empty.style.display = 'block';
+      // This block mutates static markup, so both branches must be written —
+      // otherwise clearing a filtered-empty history leaves "No matches" on
+      // screen forever, because the reset only ever happened implicitly, by
+      // never having run the mutation in the first place.
       if (all.length){
         empty.querySelector('h2').textContent = 'No matches';
         empty.querySelector('p').textContent = 'Nothing in your history matches these filters.';
+      } else {
+        empty.querySelector('h2').textContent = 'Nothing logged yet';
+        empty.querySelector('p').textContent =
+          'Finish a training set or a competition attempt in the live judge and it will appear here.';
       }
       return;
     }
