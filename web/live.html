@@ -1129,6 +1129,11 @@
     return proto + '//' + location.host + '/ws/live';
   }
 
+  // Set by the message handler whenever the server sends `{error: "..."}`
+  // instead of a status frame (busy, missing pose runtime, a bad frame), so
+  // the close handler can explain the fallback instead of guessing "no backend".
+  var lastServerError = null;
+
   function startTransport(){
     setConnStatus('connecting');
     try{
@@ -1148,15 +1153,25 @@
       sendTimer = setInterval(sendFrame, 150);
     });
     ws.addEventListener('message', function(ev){
-      try{
-        var status = JSON.parse(ev.data);
-        applyStatus(status);
-      }catch(e){}
+      var status;
+      try{ status = JSON.parse(ev.data); }catch(e){ return; }
+      // `api/main.py` sends `{error, retry?}` on three occasions — server busy,
+      // the `cv` extra missing, or one bad frame — none of which are a status
+      // payload. Feeding one through applyStatus() used to render the literal
+      // string "undefined" into the state label, since `status.state` is
+      // unset on an error payload but applyStatus assigns it unconditionally.
+      if (status && typeof status.error === 'string'){
+        lastServerError = status.error;
+        if (window.console) console.warn('White Lights backend:', status.error);
+        return;
+      }
+      applyStatus(status);
     });
     ws.addEventListener('close', function(){
       wsConnected = false;
       if (sendTimer) clearInterval(sendTimer);
-      startSimulator();
+      startSimulator(lastServerError);
+      lastServerError = null;
     });
     ws.addEventListener('error', function(){ /* close will follow */ });
   }
@@ -1267,10 +1282,16 @@
      fully demonstrable with no backend running. Feeds the exact same
      applyStatus() used for real data. ---- */
   var simTimer = null;
-  function startSimulator(){
+  function startSimulator(serverError){
     if (simTimer) return;
     setConnStatus('demo');
-    noteEl.textContent = 'No judging backend detected — showing simulated demo data.';
+    // `serverError` is set when a real backend was reached and rejected the
+    // socket (busy, missing the `cv` extra) — a different situation from no
+    // backend existing at all, and one the lifter should not be left to guess
+    // at from a generic message.
+    noteEl.textContent = serverError
+      ? 'Backend unavailable (' + serverError + ') — showing simulated demo data.'
+      : 'No judging backend detected — showing simulated demo data.';
     var t0 = performance.now();
     var prevPhase = null;
     var compT0 = null, compIssued = {}, compVerdictSent = false, prevArmed = false;
