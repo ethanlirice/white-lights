@@ -79,6 +79,7 @@
   }
   :root[data-theme="light"] input[type=file], :root[data-theme="light"] textarea{ background: oklch(0% 0 0 / 0.05); }
   input[type=file]:focus, textarea:focus{ border-color: var(--border-strong); }
+  input[type=file]:focus-visible, textarea:focus-visible{ outline: 2px solid var(--text); outline-offset: 2px; }
   input[type=file]::file-selector-button{
     margin-right: 12px; padding: 7px 14px; border: 0; border-radius: 999px; cursor: pointer;
     background: var(--text); color: var(--bg-2); font: inherit; font-size: 12px; font-weight: 700;
@@ -132,7 +133,7 @@
       <a href="history.html">History</a>
       <a href="stats.html">Stats</a>
       <a class="here" href="upload.html">Upload</a>
-      <button id="themeToggle" title="Toggle theme">◐</button>
+      <button id="themeToggle" title="Toggle theme" aria-label="Toggle light and dark theme">◐</button>
     </nav>
   </div>
 </header>

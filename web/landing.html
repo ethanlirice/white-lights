@@ -42,6 +42,9 @@
     --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.25);
   }
   *{ box-sizing: border-box; }
+  @media (prefers-reduced-motion: reduce){
+    .hero-lamp{ animation: none; opacity: 1; box-shadow: 0 0 28px 6px oklch(100% 0 0 / 0.5); }
+  }
   html, body{ margin: 0; }
   body{
     background: var(--bg); color: var(--text); font-family: var(--font-ui);
@@ -192,7 +195,7 @@
       <a href="history.html">History</a>
       <a href="stats.html">Stats</a>
       <a href="upload.html">Upload a Clip</a>
-      <button id="themeToggle" title="Toggle theme">◐</button>
+      <button id="themeToggle" title="Toggle theme" aria-label="Toggle light and dark theme">◐</button>
       <a class="nav-cta" href="live.html">Open Live Judge</a>
     </nav>
   </div>

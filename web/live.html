@@ -42,6 +42,15 @@
     --shadow: 0 20px 50px -20px oklch(0% 0 0 / 0.25);
   }
   *{ box-sizing: border-box; }
+  /* The judge lamp pulses, the verdict banner strobes white on reveal, and the
+     depth light animates — all load-bearing for a sighted lifter mid-set, but
+     the flash in particular is a real photosensitivity concern. Users who've
+     asked the OS for reduced motion get the state changes without the motion. */
+  @media (prefers-reduced-motion: reduce){
+    #light.pulse{ animation: none; }
+    #flash.go{ animation: none; opacity: 0; }
+    .verdict-lamp, .banner-inner, #compBanner{ transition-duration: 0.01ms !important; }
+  }
   html, body{ height: 100%; margin: 0; }
   body{
     background: var(--bg);
@@ -134,6 +143,9 @@
     background: transparent; border: 0; outline: none; width: 150px; flex: none;
     color: var(--text); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; overflow: hidden;
   }
+  /* outline:none above kills the mouse-click ring; give it back for keyboard focus,
+     which is the only case an indicator is load-bearing. */
+  select#cameraSelect:focus-visible{ outline: 2px solid var(--text); outline-offset: 2px; border-radius: 6px; }
   select#cameraSelect option{ background: var(--panel-solid); color: var(--text); }
   #connDot{ width: 8px; height: 8px; border-radius: 50%; background: var(--red); flex: none; transition: background .3s; }
   #connDot.live{ background: var(--green); }
@@ -236,6 +248,7 @@
   }
   :root[data-theme="light"] #weightInput{ background: oklch(0% 0 0 / 0.05); }
   #weightInput:focus{ border-color: var(--border-strong); }
+  #weightInput:focus-visible{ outline: 2px solid var(--text); outline-offset: 2px; }
   #weightUnit{ display: flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   #weightUnit button{ background: transparent; border: 0; padding: 10px 12px; font-size: 12px; font-weight: 700; color: var(--text-dim); }
   #weightUnit button.active{ background: var(--text); color: var(--bg-2); }
@@ -428,7 +441,7 @@
         <select id="cameraSelect"><option value="">Default camera</option></select>
       </label>
       <div class="chip glass"><span id="connDot"></span><span id="connLabel" style="font-size:12px;color:var(--text-dim)">Connecting</span></div>
-      <button id="themeToggle" class="glass" title="Toggle theme">◐</button>
+      <button id="themeToggle" class="glass" title="Toggle theme" aria-label="Toggle light and dark theme">◐</button>
     </div>
   </header>
 
@@ -456,6 +469,13 @@
     <div id="note">Waiting for the camera feed…</div>
   </section>
 
+  <!-- `#note` above repaints on nearly every frame (a live tracking caption, not
+       an event), so making it a live region would read out the depth estimate
+       several times a second — noise, not help. The one thing worth announcing
+       without looking at the screen is the verdict itself: one call per rep,
+       exactly like a spotter calling a lift out loud. -->
+  <div id="verdictAnnounce" class="sr-only" role="status" aria-live="assertive"></div>
+
   <section id="modeCards">
     <div id="trainCard" class="mode-card glass">
       <div class="card-title">Training set</div>
@@ -474,7 +494,7 @@
     </div>
   </section>
 
-  <button id="historyTab">History ▲</button>
+  <button id="historyTab" aria-expanded="false" aria-controls="historyDrawer">History ▲</button>
   <div id="historyDrawer" class="glass">
     <div class="drawer-head">
       <div class="drawer-title condensed">History</div>
@@ -482,7 +502,7 @@
         <button id="exportBtn">Export</button>
         <button id="importBtn">Import</button>
         <button id="clearHistBtn">Clear</button>
-        <button id="closeHistBtn">✕</button>
+        <button id="closeHistBtn" aria-label="Close history">✕</button>
       </div>
     </div>
     <input id="importFile" type="file" accept="application/json" />
@@ -521,6 +541,7 @@
   var stateEl = document.getElementById('state');
   var noteEl = document.getElementById('note');
   var flashEl = document.getElementById('flash');
+  var verdictAnnounce = document.getElementById('verdictAnnounce');
 
   var modeTrainBtn = document.getElementById('modeTrainBtn');
   var modeCompBtn = document.getElementById('modeCompBtn');
@@ -614,8 +635,14 @@
   }
   renderHistory();
 
-  historyTab.addEventListener('click', function(){ historyDrawer.classList.add('open'); });
-  closeHistBtn.addEventListener('click', function(){ historyDrawer.classList.remove('open'); });
+  historyTab.addEventListener('click', function(){
+    historyDrawer.classList.add('open');
+    historyTab.setAttribute('aria-expanded', 'true');
+  });
+  closeHistBtn.addEventListener('click', function(){
+    historyDrawer.classList.remove('open');
+    historyTab.setAttribute('aria-expanded', 'false');
+  });
   exportBtn.addEventListener('click', function(){
     var blob = new Blob([JSON.stringify(loadHistory(), null, 2)], {type: 'application/json'});
     var a = document.createElement('a');
@@ -887,12 +914,25 @@
     }
 
     if (status.rep_completed && status.verdict){
+      announceVerdict(status.verdict);
       if (mode === 'training' && setActive){
         addRep(status.verdict.verdict);
       } else if (mode === 'competition' && compArmed){
         setTimeout(function(){ revealVerdict(status.verdict); }, 700);
       }
     }
+  }
+
+  function announceVerdict(verdict){
+    var msg = verdict.verdict.replace('_', ' ');
+    if (verdict.faults && verdict.faults.length){
+      msg += ': ' + verdict.faults.join(', ').toLowerCase().replace(/_/g, ' ');
+    }
+    // Re-announcing identical text back-to-back is a no-op for most screen
+    // readers, so force a change even on a repeat verdict (e.g. two GOOD reps
+    // with no faults in a row).
+    verdictAnnounce.textContent = '';
+    window.setTimeout(function(){ verdictAnnounce.textContent = msg; }, 30);
   }
 
   /* ===================== CANVAS DRAW LOOP ===================== */
