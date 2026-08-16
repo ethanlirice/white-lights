@@ -126,8 +126,9 @@ pip install -e ".[cv,api,dev]"      # pose model + API + dev tools
 ```
 
 Dependencies are split into extras so tests/CI stay fast: `cv` (ultralytics +
-opencv, pulls torch), `api` (fastapi + uvicorn), `dev` (pytest + ruff + mypy). The
-`yolo11n-pose.pt` weights auto-download on first run.
+opencv, pulls torch), `api` (fastapi + uvicorn), `dev` (pytest + ruff + mypy),
+`onnx` (export tooling — `pip install -e ".[cv,onnx]"`, see
+`eval/export_onnx.py`). The `yolo11n-pose.pt` weights auto-download on first run.
 
 The frontend's pure logic (`web/lib/*.mjs`) has its own test runner — optional
 for running the app, only needed to touch that code:
