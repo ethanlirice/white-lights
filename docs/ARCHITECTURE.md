@@ -105,10 +105,46 @@ confidence, the list of `Fault`s, and the depth margin.
 - **Uncertainty as a feature.** Confidence-gating and a first-class `UNCERTAIN`
   verdict mean borderline calls are surfaced, not guessed — important because a
   pose estimator's "locked out" is noisy and rarely a clean 180°.
-- **Deterministic tests for stochastic input.** The 99-test suite drives the
+- **Deterministic tests for stochastic input.** The 180-test Python suite (plus
+  45 Vitest cases over the frontend's pure logic — see `web/lib/`) drives the
   trackers with hand-built synthetic keypoint traces (known good / high /
   double-bounce / early-command …), so judging logic is tested exactly without a
   camera or model.
 - **Honest deferrals.** Multi-camera triangulation, hitching detection, and
   bar-on-thighs need signals the current single-camera pose doesn't expose; they
   are documented stubs rather than faked.
+
+## Scaling beyond one process
+
+Everything here runs as a single process on purpose (see `api/runtime.py`):
+one bounded pool of pre-warmed models, one in-memory connection counter, one
+`/metrics` snapshot. That is a deliberate, defensible design for a single box
+— explicit load-shedding beats silent degradation — but it is a single box,
+and it is worth being honest about what changes past one.
+
+- **The stateless surface scales for free.** `/`, `/live`, `/judge`, and the
+  other page/HTTP routes carry no server-side session state, so they sit
+  behind any standard load balancer with zero changes.
+- **`/ws/live` does not, today.** Each WebSocket owns a `LiveJudge` — a
+  tracker's entire state (rep count, calibrated lockout angle, hold timers)
+  lives in that one process's memory for the socket's lifetime. Route the
+  same connection to a different replica mid-set and it starts over with no
+  memory of the lift in progress. The practical fix is session affinity
+  (sticky routing by connection, which most load balancers support natively)
+  rather than externalising tracker state to a shared store — a Redis round
+  trip on every frame would cost more latency than the state is worth for a
+  real-time judge, and the state is cheap to lose (worst case: restart the
+  set).
+- **Capacity is per-process, not fleet-wide.** `InferenceRuntime`'s connection
+  cap and `ServerBusy` shedding (see `api/runtime.py`) bound one instance.
+  With N replicas, the honest capacity is N × that number, and nothing today
+  coordinates it — a load balancer doing least-connections routing across
+  replicas gets you most of the way there without needing a shared counter.
+- **Model serving is the part actually worth separating out.** Inference is
+  the expensive, poolable resource; the web tier around it is not. Past one
+  box, the pool in `api/runtime.py` is the seam: swap it for a call to a
+  dedicated model server (ONNX Runtime Server, Triton) shared across web
+  replicas, and the web tier stays thin and horizontally trivial while
+  inference capacity scales independently of it. This is also the reason
+  ONNX export (`docs/ROADMAP.md`) matters beyond just a smaller Docker image —
+  it is the format most standalone model servers actually expect.
