@@ -32,3 +32,23 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+  # Separate job, not a step tacked onto lint-and-test: this is a different
+  # runtime with its own dependency graph, and a failure here means "the pure
+  # frontend logic broke," not "the backend broke" — worth being able to tell
+  # apart from the status page without opening the log.
+  js-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Vitest
+        run: npm test

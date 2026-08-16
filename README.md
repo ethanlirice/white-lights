@@ -6,7 +6,7 @@ against the federation rulebook, live, with the exact fault flagged and (in
 competition mode) the referee commands issued by the computer itself.
 
 [![CI](https://github.com/ethanlirice/white-lights/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanlirice/white-lights/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-176%20passing-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-180%20python%20%2B%2045%20js-brightgreen)](tests/)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![ruff](https://img.shields.io/badge/lint-ruff-261230)](https://docs.astral.sh/ruff/)
@@ -86,16 +86,19 @@ module map, and the design decisions behind it.
 - **Designed around model uncertainty.** Confidence-gating, a first-class
   **UNCERTAIN** verdict, per-lifter lockout calibration, and IPF/USAPL strictness
   profiles — because a pose estimator's "locked out" is never a clean 180°.
-- **Tested & typed.** 176 tests over deterministic synthetic-keypoint fixtures —
-  including a wire-contract suite that asserts on the JSON the browser actually
-  receives, not just on tracker internals. Full type hints, checked: CI runs
-  ruff + **mypy** + pytest on every push.
+- **Tested & typed.** 180 Python tests over deterministic synthetic-keypoint
+  fixtures — including a wire-contract suite that asserts on the JSON the
+  browser actually receives, not just on tracker internals — plus 45 Vitest
+  cases over the frontend's pure logic (`web/lib/*.mjs`): pose synthesis,
+  history aggregation, chart math. Full type hints, checked: CI runs
+  ruff + **mypy** + pytest + vitest on every push.
 
 ## Tech stack
 
 **Python 3.11** · **FastAPI** + WebSockets · **Ultralytics YOLO11-pose** (PyTorch)
-· **OpenCV** · **Pydantic v2** · **NumPy** · vanilla-JS + Canvas frontend ·
-**pytest** · **ruff** · GitHub Actions (CI + Pages).
+· **OpenCV** · **Pydantic v2** · **NumPy** · vanilla-JS + Canvas frontend, pure
+logic split into native ES modules (`web/lib/`) · **pytest** · **Vitest** ·
+**ruff** · GitHub Actions (CI + Pages).
 
 ## Project layout
 
@@ -103,9 +106,11 @@ module map, and the design decisions behind it.
 whitelights/   core package — pose, smoothing, fusion, depth, reps, posture,
                tracking (shared judge machinery), live/bench/deadlift/freereps
                (online judges), camera, judges, pipeline, types, cli
-api/           FastAPI app: /live, /judge, /metrics, WebSocket /ws/live, pages
-web/           frontend — live.html (multi-lift judge), landing/history/stats
-tests/         176-test pytest suite + synthetic keypoint fixtures
+api/           FastAPI app: /live, /judge, /metrics, /lib/* (JS modules),
+               WebSocket /ws/live, pages
+web/           frontend — live.html (multi-lift judge), landing/history/stats;
+               web/lib/ holds the pure logic those pages import as ES modules
+tests/         180-test pytest suite + synthetic keypoint fixtures
 eval/          validation harness, keypoint traces, camera-geometry sweep
 docs/          ARCHITECTURE, DESIGN, ROADMAP
 ```
@@ -122,6 +127,14 @@ pip install -e ".[cv,api,dev]"      # pose model + API + dev tools
 Dependencies are split into extras so tests/CI stay fast: `cv` (ultralytics +
 opencv, pulls torch), `api` (fastapi + uvicorn), `dev` (pytest + ruff + mypy). The
 `yolo11n-pose.pt` weights auto-download on first run.
+
+The frontend's pure logic (`web/lib/*.mjs`) has its own test runner — optional
+for running the app, only needed to touch that code:
+
+```bash
+npm install    # dev-only: Vitest. Nothing here ships to the browser.
+npm test
+```
 
 ## Run
 
@@ -147,8 +160,9 @@ curl -s localhost:8000/metrics
 ```
 
 ```bash
-pytest                               # 176 tests
+pytest                               # 180 tests
 ruff check . && ruff format --check . && mypy
+npm test                             # 45 tests, the frontend's pure logic
 python -m eval.geometry                         # camera-placement envelope
 python -m eval.traces extract --clips-dir data/clips --out data/traces
 python -m eval.validate --traces-dir data/traces --labels data/labels.csv
