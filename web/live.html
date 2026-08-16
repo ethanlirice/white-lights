@@ -511,7 +511,9 @@
 
 </div>
 
-<script>
+<script type="module">
+import { SQUAT_DEPTH_THRESHOLD, synthPose } from './lib/poses.mjs';
+
 (function(){
   "use strict";
 
@@ -1207,94 +1209,11 @@
     sendCanvas.toBlob(function(blob){ if (blob && ws.readyState === WebSocket.OPEN) ws.send(blob); }, 'image/jpeg', 0.7);
   }
 
-  /* ---- synthetic skeletons for the offline simulator ----
-     Without these the simulator sent `keypoints: null`, so the depth-geometry
-     overlay — the thing that makes this UI worth screenshotting — never
-     appeared on the hosted demo, the one place most visitors see it. These
-     fabricate a plausible body, not a plausible *lift*: good enough to show
-     the overlay moving in step with the state machine, not a physics sim.
-
-     All three share one convention for `progress`, matching what
-     trainingStatus/competitionStatus already compute per lift, so the pose
-     functions can consume it directly with no re-mapping:
-       squat     0 = standing, 1 = bottom of the descent
-       bench     0 = lockout (bar away from chest), 1 = bar at the chest
-       deadlift  0 = bar on the floor, 1 = standing lockout
-  */
-  function toKeypointList(points){
-    var out = [];
-    for (var name in points) out.push({ name: name, x: points[name].x, y: points[name].y, confidence: 0.9 });
-    return out;
-  }
-  function jitter(t, seed){ return Math.sin(t * 2.3 + seed) * 0.0035; }  // idle micro-sway, not a rep
-
-  function synthSquatPose(t, progress){
-    var cx = 0.5 + jitter(t, 4) * 0.4;
-    var shoulderY = 0.30 + progress * 0.10 + jitter(t, 0);
-    var hipY = 0.52 + progress * 0.24 + jitter(t, 1);
-    var kneeY = 0.745 + progress * 0.02 + jitter(t, 2);
-    var ankleY = 0.93 + jitter(t, 3) * 0.3;
-    var kneeForward = progress * 0.035; // knees travel forward on the descent
-    var points = {
-      left_shoulder: { x: cx - 0.085, y: shoulderY }, right_shoulder: { x: cx + 0.085, y: shoulderY },
-      left_hip: { x: cx - 0.075, y: hipY }, right_hip: { x: cx + 0.075, y: hipY },
-      left_knee: { x: cx - 0.065 + kneeForward, y: kneeY }, right_knee: { x: cx + 0.065 + kneeForward, y: kneeY },
-      left_ankle: { x: cx - 0.05, y: ankleY }, right_ankle: { x: cx + 0.05, y: ankleY },
-      left_elbow: { x: cx - 0.105, y: shoulderY + 0.02 }, right_elbow: { x: cx + 0.105, y: shoulderY + 0.02 },
-      left_wrist: { x: cx - 0.10, y: shoulderY - 0.03 }, right_wrist: { x: cx + 0.10, y: shoulderY - 0.03 }
-    };
-    // Same two rows the real judge compares, from the same body — mirrors
-    // `depth_geometry()` in api/main.py so the demo overlay isn't a special case.
-    var below = hipY > kneeY;
-    return {
-      keypoints: toKeypointList(points),
-      geometry: { hip_row: hipY, knee_row: kneeY, margin: (hipY - kneeY) * 480, below: below, confidence: 0.9 }
-    };
-  }
-
-  function synthBenchPose(t, progress){
-    var cx = 0.5 + jitter(t, 4) * 0.15;
-    var shoulderY = 0.52 + jitter(t, 0) * 0.3;
-    var hipY = 0.565 + jitter(t, 1) * 0.3;
-    var kneeY = 0.60 + jitter(t, 2) * 0.3;
-    var ankleY = 0.64 + jitter(t, 3) * 0.3;
-    var barY = shoulderY - 0.20 + progress * 0.24; // lockout above the chest -> touch
-    var elbowSpread = 0.05 + progress * 0.09;       // elbows flare as the bar descends
-    var points = {
-      left_shoulder: { x: cx - 0.09, y: shoulderY }, right_shoulder: { x: cx + 0.09, y: shoulderY },
-      left_hip: { x: cx - 0.07, y: hipY }, right_hip: { x: cx + 0.07, y: hipY },
-      left_knee: { x: cx - 0.10, y: kneeY }, right_knee: { x: cx + 0.10, y: kneeY },
-      left_ankle: { x: cx - 0.09, y: ankleY }, right_ankle: { x: cx + 0.09, y: ankleY },
-      left_elbow: { x: cx - 0.09 - elbowSpread, y: (shoulderY + barY) / 2 },
-      right_elbow: { x: cx + 0.09 + elbowSpread, y: (shoulderY + barY) / 2 },
-      left_wrist: { x: cx - 0.11, y: barY }, right_wrist: { x: cx + 0.11, y: barY }
-    };
-    return { keypoints: toKeypointList(points), geometry: null };  // bench does not judge depth
-  }
-
-  function synthDeadliftPose(t, progress){
-    var cx = 0.5 + jitter(t, 4) * 0.25;
-    var shoulderY = 0.40 - progress * 0.12 + jitter(t, 0);
-    var hipY = 0.62 - progress * 0.12 + jitter(t, 1);
-    var kneeY = 0.78 - progress * 0.04 + jitter(t, 2);
-    var ankleY = 0.93 + jitter(t, 3) * 0.3;
-    var barY = ankleY - progress * (ankleY - hipY); // bar rides the shin up to hip height
-    var points = {
-      left_shoulder: { x: cx - 0.08, y: shoulderY }, right_shoulder: { x: cx + 0.08, y: shoulderY },
-      left_hip: { x: cx - 0.07, y: hipY }, right_hip: { x: cx + 0.07, y: hipY },
-      left_knee: { x: cx - 0.06, y: kneeY }, right_knee: { x: cx + 0.06, y: kneeY },
-      left_ankle: { x: cx - 0.045, y: ankleY }, right_ankle: { x: cx + 0.045, y: ankleY },
-      left_elbow: { x: cx - 0.09, y: (shoulderY + barY) / 2 }, right_elbow: { x: cx + 0.09, y: (shoulderY + barY) / 2 },
-      left_wrist: { x: cx - 0.02, y: barY }, right_wrist: { x: cx + 0.02, y: barY }
-    };
-    return { keypoints: toKeypointList(points), geometry: null };  // deadlift does not judge depth
-  }
-
-  function synthPose(liftName, t, progress){
-    if (liftName === 'bench') return synthBenchPose(t, progress);
-    if (liftName === 'deadlift') return synthDeadliftPose(t, progress);
-    return synthSquatPose(t, progress);
-  }
+  /* synthPose / SQUAT_DEPTH_THRESHOLD: imported at the top of this module from
+     ./lib/poses.mjs, which also carries their real test coverage (web/lib/
+     poses.test.mjs) — this file has no test runner of its own to give them.
+     See that module's header for what they do and why the threshold below is
+     shared rather than copied. */
 
   /* ---- offline simulator: fabricates a plausible squat cycle so the UI is
      fully demonstrable with no backend running. Feeds the exact same
@@ -1348,10 +1267,10 @@
       } else {
         if (c < 0.15){ phase = 'STANDING'; progress = 0; cp = null; note = 'Standing tall — waiting for descent.'; }
         else if (c < 0.5){
-          phase = 'DESCENDING'; progress = (c - 0.15) / 0.35; cp = progress > 0.55;
+          phase = 'DESCENDING'; progress = (c - 0.15) / 0.35; cp = progress > SQUAT_DEPTH_THRESHOLD;
           note = cp ? 'Hip crease below the knee line — depth confirmed.' : 'Descending — hip is ' + Math.round((1 - progress) * 6) + 'cm above the knee line.';
         } else if (c < 0.85){
-          phase = 'ASCENDING'; progress = 1 - (c - 0.5) / 0.35; cp = progress > 0.55;
+          phase = 'ASCENDING'; progress = 1 - (c - 0.5) / 0.35; cp = progress > SQUAT_DEPTH_THRESHOLD;
           note = 'Ascending — tracking bar path for downward movement.';
         } else { phase = 'STANDING'; progress = 0; cp = null; note = 'Lockout held. Ready for the next rep.'; }
       }
@@ -1374,8 +1293,8 @@
       squat: [
         { until: 1.5, state: 'STANDING', prog: 0, cp: null, note: 'Setup detected — hold still for the command.' },
         { until: 1.6, cmd: 'SQUAT', state: 'STANDING', prog: 0, cp: null, note: 'Command given — squat when ready.' },
-        { until: 3.6, state: 'DESCENDING', ramp: [0, 1], cpAt: 0.55, note: 'Descending — tracking hip crease against the knee line.' },
-        { until: 5.6, state: 'ASCENDING', ramp: [1, 0], cpAt: 0.55, note: 'Ascending — tracking bar path for downward movement.' },
+        { until: 3.6, state: 'DESCENDING', ramp: [0, 1], cpAt: SQUAT_DEPTH_THRESHOLD, note: 'Descending — tracking hip crease against the knee line.' },
+        { until: 5.6, state: 'ASCENDING', ramp: [1, 0], cpAt: SQUAT_DEPTH_THRESHOLD, note: 'Ascending — tracking bar path for downward movement.' },
         { until: 6.2, state: 'STANDING', prog: 0, cp: null, note: 'Lockout held — awaiting the rack command.' },
         { until: 6.3, cmd: 'RACK', state: 'STANDING', prog: 0, cp: null, note: 'Rack command given.' },
         { until: 7.2, state: 'STANDING', prog: 0, cp: null, note: 'Attempt complete — judging.' }

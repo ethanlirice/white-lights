@@ -13,6 +13,7 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
+node_modules/
 
 # Models (auto-downloaded by ultralytics on first run)
 *.pt

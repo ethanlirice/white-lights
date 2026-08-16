@@ -1,0 +1,12 @@
+{
+  "name": "white-lights-web",
+  "private": true,
+  "type": "module",
+  "description": "Test harness for the pure logic extracted from web/*.html into web/lib/*.mjs. Ships nothing to the browser — the app itself stays framework-free, no build step; this is dev-only tooling so that logic which used to be hand-verified (no runtime to execute it against) has real, automated coverage.",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.10"
+  }
+}

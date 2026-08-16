@@ -7,6 +7,10 @@ GET  /live     -> serves the live webcam judge UI (web/live.html)
 GET  /history  -> serves the training-history page (web/history.html)
 GET  /stats    -> serves the stats page (web/stats.html)
 GET  /upload   -> serves the batch upload UI (web/upload.html)
+GET  /lib/*    -> static ES modules the pages import (web/lib/*.mjs) — pure
+                 logic (e.g. the offline simulator's synthetic poses) that
+                 has real unit tests (web/lib/*.test.mjs) precisely because
+                 it lives outside the inline, untested page scripts.
 GET  /metrics  -> per-stage live latency, capacity and pool state as JSON
 POST /judge    -> accepts one or more video uploads, runs the batch pipeline,
                  returns per-rep verdicts as JSON.
@@ -37,6 +41,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
 from api.runtime import InferenceRuntime, ServerBusy, StageTimings, timed
@@ -73,6 +78,11 @@ app = FastAPI(
     description="Real-time computer-vision squat-depth judge for powerlifting.",
     lifespan=lifespan,
 )
+
+# The pages import their pure logic (e.g. web/live.html <- web/lib/poses.mjs)
+# as native ES modules — a browser feature, not a dependency — so this needs
+# nothing beyond serving the files; there is no bundler in this app's path.
+app.mount("/lib", StaticFiles(directory=WEB_DIR / "lib"), name="lib")
 
 
 @app.get("/", include_in_schema=False)
