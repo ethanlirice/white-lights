@@ -1,8 +1,12 @@
 # Design notes
 
-Rationale for each decision in the v2 scaffold, for review. The brief was
-scaffolding only: `pose.py` is fully implemented; `smoothing`, `fusion`,
-`depth`, and `reps` are stubs with firm contracts and failing/xfail tests.
+Rationale for each decision in the v2 scaffold, for review. Written when the
+brief was scaffolding only — `pose.py` fully implemented, `smoothing`,
+`fusion`, `depth`, and `reps` stubs with firm contracts and failing/xfail
+tests. All four have since shipped (only multi-view triangulation inside
+`fusion.py` still raises `NotImplementedError` — see ROADMAP.md); the
+*reasoning* below is what stayed accurate across that, which is the point of
+keeping this file.
 
 ## Layout & packaging
 
@@ -73,11 +77,14 @@ scaffolding only: `pose.py` is fully implemented; `smoothing`, `fusion`,
   than gaps in the list, so smoothing/segmentation can assume one entry per
   frame index.
 
-## The stubs — contracts, not logic
+## The stubs — contracts, not logic (as designed; all four now implemented)
 
-Each stub carries a docstring contract (inputs/outputs/invariants), typed
-signatures, a `*Config` model for tunables, and `raise NotImplementedError`
-with `TODO(ethan)`. Design choices worth noting:
+Each stub was built to carry a docstring contract (inputs/outputs/invariants),
+typed signatures, and a `*Config` model for tunables *before* any logic
+existed — `raise NotImplementedError` with `TODO(ethan)` stood in until it
+did. The contracts are why implementing each one later needed no interface
+change. Design choices worth noting, all still true of the real
+implementations:
 
 - **`smoothing` is a filter, not a resampler** — same length/time base in and
   out — so downstream indexing stays valid. Contract asks for confidence-aware,
@@ -105,32 +112,22 @@ with `TODO(ethan)`. Design choices worth noting:
 
 ## Tests
 
-- **Pose helpers have real passing tests** (fake ultralytics `Results`).
-- **Stub contracts are `strict` xfail** (`raises=NotImplementedError`). They
-  encode the *expected* behaviour on synthetic fixtures; today they xfail on the
-  `NotImplementedError`, and when you implement a stub correctly the strict xfail
-  flips to a failure (XPASS) — a built-in reminder to remove the marker.
-- **Synthetic fixtures** (`conftest.py`) build known good / high / double-bounce
-  3D traces and a noisy 2D track with a gap, plus a ground-truth depth builder
-  so the `reps` tests isolate the state machine from the depth stub.
+Every stage started as a stub with `strict` xfail tests
+(`raises=NotImplementedError`) encoding its expected behaviour on synthetic
+fixtures — implementing a stub correctly flipped its xfail to a failure
+(XPASS), a built-in reminder to remove the marker. None of that scaffolding is
+load-bearing today: every stage shipped, so it's all real, passing tests now
+(180 Python + 45 Vitest — see `docs/ROADMAP.md` for what each covers). It's
+worth keeping the pattern in mind for whatever's implemented next.
 
-## Roadmap (incremental feature order)
+`tests/conftest.py`'s synthetic fixtures (known good / high / double-bounce 3D
+traces, a noisy 2D track with a gap, a ground-truth depth builder) are still
+exactly how the state machines get exercised without a camera or model — that
+part hasn't changed.
 
-1. **v2.0 — depth only. [done]** smoothing + fusion (single-cam fallback) +
-   depth + a depth-only rep segmenter. The "main basis": below-parallel calls.
-2. **v2.1 — downward movement. [done]** Re-descent detection on the ascent;
-   reuses the same hip trajectory.
-3. **v2.2 — command timing. [done: EARLY_DESCENT]** Referee `START`/`RACK`
-   timestamps wired in. EARLY_DESCENT implemented; EARLY_RACK deferred (needs a
-   rack-motion signal).
-4. **v2.3 — postural faults. [done: lockout + feet]** `posture.py` adds
-   INCOMPLETE_LOCKOUT (hip-knee-ankle angle at lockout) and FOOT_MOVEMENT (ankle
-   drift, thigh-normalised), folded into the rep fault list. Detectors are
-   conservative — they no-op when the needed keypoints are absent.
-   Still deferred: BAR_SUPPORTED_ON_THIGHS (needs bar detection) and real
-   multi-camera calibration/triangulation in `fusion`.
+## Roadmap
 
-Note: the stub tests referenced above are now real passing tests as each feature
-landed; only genuinely-deferred behaviour (EARLY_RACK, bar-on-thighs, multi-cam)
-remains unimplemented.
+Feature order, current status, and what's next all live in one place now —
+see [ROADMAP.md](ROADMAP.md) rather than a second copy here that could drift
+from it the way this section used to.
 ```

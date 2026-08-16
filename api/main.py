@@ -177,7 +177,9 @@ def live_payload(
     *,
     judges_depth: bool = True,
 ) -> dict:
-    """Build the per-frame JSON the browser renders (see web/live.html + HANDOFF.md).
+    """Build the per-frame JSON the browser renders (see web/live.html +
+    tests/test_wire_contract.py, which asserts on this exact payload —
+    docs/HANDOFF.md is the historical pre-implementation spec, not this).
 
     Keypoints are a list of ``{name, x, y, confidence}`` normalised to [0, 1]
     against the processed frame size so the client can scale them to any canvas.

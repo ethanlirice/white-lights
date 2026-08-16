@@ -1,78 +1,37 @@
-# White Lights — `/ws/live` handoff
+# White Lights — `/ws/live` handoff (historical)
 
-`web/live.html` is a finished, self-contained frontend for the live webcam judge.
-Do not change its structure, element IDs, or JS — it already expects a WebSocket
-endpoint at `/ws/live` and works standalone (via a built-in offline simulator)
-until that endpoint exists.
+**Status: implemented.** This was the pre-implementation spec for the
+`/ws/live` WebSocket route — written when the endpoint didn't exist yet, kept
+for the design reasoning ("why binary frames, why JSON per frame, why run the
+model off-thread"), not as a current reference for the wire format. The wire
+format itself has grown well past what's described below: `checkpoint_met`,
+`lift_progress`, `command`, and `geometry` were all added since (see
+`docs/HANDOFF-UI.md` for the first round of that, and `whitelights/depth.py` /
+`api/main.py:depth_geometry` for the most recent).
 
-## What to build
+**For the current wire contract, read the code that can't drift from it:**
 
-A FastAPI WebSocket route, `GET /ws/live` (upgrades to WS), that wraps the
-existing `whitelights.live.LiveJudge` / `OnlineRepTracker` for one connected
-client at a time.
+- `api/main.py:live_payload` — builds the exact JSON sent per frame.
+- `tests/test_wire_contract.py` — asserts on that JSON directly, for every
+  lift × terminal scenario. This is the actual spec; it fails the moment the
+  payload and this suite disagree, which a hand-written doc cannot promise.
 
-## Wire protocol
+## Why it looked like this
 
-**Client -> server:** binary WebSocket messages, each one JPEG frame (~480px
-wide), sent roughly every 150ms.
+**Client -> server:** binary WebSocket messages, one JPEG frame (~480px wide)
+per message, sent roughly every 150ms — still true today.
 
-**Server -> client:** one JSON text message per processed frame:
+**Server -> client:** one JSON text message per processed frame, decode
+off the asyncio event loop (`run_in_executor` / the pool in `api/runtime.py`)
+since `judge.process_frame` calls into the pose model synchronously and would
+otherwise block every other connection — still true today, and is now a
+bounded pool rather than one model per connection (see
+`docs/ARCHITECTURE.md`'s "Scaling beyond one process").
 
-```json
-{
-  "state": "STANDING | DESCENDING | ASCENDING",
-  "below_parallel": true,
-  "depth_progress": 0.62,
-  "rep_completed": false,
-  "verdict": null,
-  "note": "Hip crease 3cm above the knee line.",
-  "keypoints": [
-    {"name": "left_hip", "x": 412.0, "y": 611.0, "confidence": 0.93}
-  ]
-}
-```
+## Scope reminder (as originally written)
 
-- `below_parallel`: `true` / `false` / `null` (null = gated / not enough signal
-  yet — maps to `DepthFrameResult.gated`).
-- `depth_progress`: 0-1 float for the progress bar. Not modeled explicitly by
-  `LiveStatus` today — derive it (e.g. normalized hip travel toward the
-  standing->bottom range, or reuse `depth_margin` scaled by thigh length) or
-  send 1.0 the instant `below_parallel` flips true and interpolate on the way
-  down.
-- `rep_completed` + `verdict`: set only on the frame where
-  `LiveStatus.rep_completed` is `True`; `verdict` is `LiveStatus.last_verdict`
-  serialized (`RepVerdict.model_dump()` works as-is — `faults` values are the
-  `Fault` enum strings already, e.g. `"INSUFFICIENT_DEPTH"`).
-- `note`: free text, one line, "what it's thinking" — synthesize something
-  readable from the depth margin / state (no field for this in `LiveStatus`
-  today; add it in the WS handler, not in `live.py`'s core logic).
-- `keypoints`: array of `{name, x, y, confidence}` in the **same pixel space as
-  the JPEG the client just sent** (2D, not 3D) — this is `frame2d` from
-  `LiveJudge.process_frame`, not the fused 3D frame. Omit or send `null` when
-  no person is detected.
-
-## Suggested handler shape
-
-```python
-@app.websocket("/ws/live")
-async def ws_live(ws: WebSocket):
-    await ws.accept()
-    judge = LiveJudge()  # one per connection
-    try:
-        while True:
-            jpeg_bytes = await ws.receive_bytes()
-            frame = decode_jpeg_to_bgr(jpeg_bytes)  # cv2.imdecode
-            frame2d, depth, status = judge.process_frame(frame)
-            await ws.send_json(to_wire_message(frame2d, depth, status))
-    except WebSocketDisconnect:
-        pass
-```
-
-Run `judge.process_frame` in a thread pool executor (`run_in_executor`) — it
-calls into the YOLO model synchronously and will block the event loop
-otherwise.
-
-## Scope reminder
-
-Only `api/main.py` (new route) and possibly a small helper module need
-changes. Do not touch `web/live.html`, `whitelights/`, `tests/`, or `eval/`.
+Only `api/main.py` (new route) and possibly a small helper module were meant
+to change. That constraint applied to *this* task; it does not describe a
+rule for the codebase generally — `web/live.html`, `whitelights/`, `tests/`,
+and `eval/` have all changed substantially since, tracked in
+`docs/ROADMAP.md`.

@@ -1,4 +1,11 @@
-# HANDOFF — Multi-lift UI + new pages
+# HANDOFF — Multi-lift UI + new pages (historical)
+
+**Status: implemented.** Kept for the design reasoning behind what shipped,
+not as a live reference — some of the mechanics below (the demo simulator in
+particular) have grown further since this was written; `tests/test_judges.py`
+and `tests/test_wire_contract.py` are the parts of this that are still
+actively verified against the code, everything else here is a point-in-time
+record.
 
 ## web/live.html (modified in place)
 
