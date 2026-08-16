@@ -197,7 +197,12 @@
   <footer>Charts are drawn from your browser's local history. Nothing leaves your machine.</footer>
 </main>
 
-<script>
+<script type="module">
+import {
+  CHART_HEIGHT, CHART_PAD, CHART_WIDTH, LIFT_COLORS,
+  aggregate, dayShort, linePath, xPos, yPos,
+} from './lib/stats.mjs';
+
 (function(){
   "use strict";
 
@@ -242,32 +247,12 @@
     return out;
   }
 
-  /* ---- aggregation ---- */
-  function liftOf(e){ return e.lift || 'squat'; }
-  function dayKey(t){ var d = new Date(t); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
-  function dayShort(t){ return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); }
-
-  function aggregate(list){
-    var days = {}; /* key -> { time, good, noLift, uncertain, topWeight: {lift: kg} } */
-    list.forEach(function(e){
-      var k = dayKey(e.time);
-      if (!days[k]) days[k] = { time: e.time, good: 0, noLift: 0, uncertain: 0, top: {} };
-      var d = days[k];
-      function count(v){ if (v === 'GOOD') d.good++; else if (v === 'NO_LIFT') d.noLift++; else d.uncertain++; }
-      if (e.type === 'training'){
-        (e.reps || []).forEach(function(r){ count(r.verdict); });
-        var w = parseFloat(e.weight);
-        if (!isNaN(w) && w > 0){
-          var kg = (e.unit === 'lb') ? w * 0.45359237 : w;
-          var l = liftOf(e);
-          if (!d.top[l] || kg > d.top[l]) d.top[l] = kg;
-        }
-      } else if (e.verdict){
-        count(e.verdict);
-      }
-    });
-    return Object.keys(days).map(function(k){ return days[k]; }).sort(function(a, b){ return a.time - b.time; });
-  }
+  /* aggregate / dayShort / xPos / yPos / linePath / LIFT_COLORS: imported at
+     the top of this module from ./lib/stats.mjs, which also carries their
+     real test coverage (web/lib/stats.test.mjs) — this file has no test
+     runner of its own to give them. See that module's header for why the
+     SVG-drawing helpers below stay here instead of moving with them. */
+  var W = CHART_WIDTH, H = CHART_HEIGHT, PAD = CHART_PAD;
 
   /* ---- tiny SVG chart helpers ---- */
   var NS = 'http://www.w3.org/2000/svg';
@@ -276,7 +261,6 @@
     for (var k in attrs) n.setAttribute(k, attrs[k]);
     return n;
   }
-  var W = 860, H = 220, PAD = { l: 38, r: 12, t: 12, b: 26 };
   function frame(){
     var svg = el('svg', { viewBox: '0 0 ' + W + ' ' + H, preserveAspectRatio: 'xMidYMid meet' });
     for (var i = 0; i <= 4; i++){
@@ -285,8 +269,6 @@
     }
     return svg;
   }
-  function xPos(i, n){ return n === 1 ? (PAD.l + W - PAD.r) / 2 : PAD.l + (W - PAD.l - PAD.r) * i / (n - 1); }
-  function yPos(v, max){ return PAD.t + (H - PAD.t - PAD.b) * (1 - v / max); }
   function xLabels(svg, days){
     var n = days.length;
     var step = Math.max(1, Math.ceil(n / 8));
@@ -304,9 +286,6 @@
       t.textContent = fmt(v);
       svg.appendChild(t);
     }
-  }
-  function linePath(pts){
-    return pts.map(function(p, i){ return (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1); }).join(' ');
   }
   function emptyNote(container, msg){
     var d = document.createElement('div');
@@ -331,7 +310,6 @@
     c.appendChild(svg);
   }
 
-  var LIFT_COLORS = { squat: 'oklch(70% 0.14 250)', bench: 'oklch(70% 0.14 85)', deadlift: 'oklch(70% 0.14 150)' };
   function renderWeights(days){
     var c = document.getElementById('weightChart'); c.innerHTML = '';
     var pts = days.filter(function(d){ return Object.keys(d.top).length; });
