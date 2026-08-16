@@ -91,7 +91,8 @@ module map, and the design decisions behind it.
   browser actually receives, not just on tracker internals — plus 45 Vitest
   cases over the frontend's pure logic (`web/lib/*.mjs`): pose synthesis,
   history aggregation, chart math. Full type hints, checked: CI runs
-  ruff + **mypy** + pytest + vitest on every push.
+  ruff + **mypy** + pytest + vitest on every push, plus **pip-audit** and
+  Dependabot (pip, npm, and the Actions themselves) for the supply chain.
 
 ## Tech stack
 

@@ -30,6 +30,9 @@ jobs:
       - name: Mypy
         run: mypy
 
+      - name: pip-audit
+        run: pip-audit
+
       - name: Pytest
         run: pytest
 
