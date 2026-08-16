@@ -61,5 +61,15 @@ interfaces.
   calls toward referee-grade.
 - **Hitching / ramping** detection (deadlift) — repeated knee re-bends.
 - **Bar-on-thighs**, buttocks-off-bench, grip — need a bar/contact signal.
-- **ONNX export** to drop the torch dependency (~2 GB → ~200 MB, faster CPU
-  inference, fits any free host).
+- **A torch-free live inference path.** `eval/export_onnx.py` exports and
+  verifies the `.onnx` graph — confirmed numerically faithful to the trained
+  weights (measured, not assumed: max abs diff 0.006 against an output range
+  of ~680). That's the half of "ONNX export" that was safe to do without
+  footage. The half that actually drops the dependency at runtime is not done:
+  `ultralytics` hard-imports `torch` even to run an `.onnx` file through its
+  own API, so realising the saving means bypassing it for the live path —
+  onnxruntime directly, with letterbox resize, keypoint decode, and NMS
+  reimplemented by hand instead of borrowed from ultralytics. That's a rewrite
+  of the one fully-implemented, load-bearing module in this codebase, and it
+  gets real footage to validate against before it replaces the tested path,
+  not before.

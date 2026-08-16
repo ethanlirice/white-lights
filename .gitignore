@@ -15,8 +15,10 @@ venv/
 htmlcov/
 node_modules/
 
-# Models (auto-downloaded by ultralytics on first run)
+# Models (auto-downloaded by ultralytics on first run; *.onnx is exported by
+# eval/export_onnx.py, not committed the same way *.pt is not)
 *.pt
+*.onnx
 
 # Uploaded / working media
 *.mp4

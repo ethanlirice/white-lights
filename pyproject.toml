@@ -31,6 +31,14 @@ api = [
     "uvicorn[standard]>=0.29",
     "python-multipart>=0.0.9",
 ]
+# Export tooling only (eval/export_onnx.py) — separate from `cv` because
+# judging a lift needs none of this, and exporting needs `cv` (the source
+# `.pt` model comes from ultralytics) plus these on top of it.
+onnx = [
+    "onnx>=1.14",
+    "onnxruntime>=1.17",
+    "onnxslim>=0.1.30",
+]
 # Test + lint. httpx powers FastAPI's TestClient. ruff is pinned so CI's
 # format/lint results match local exactly (avoids "clean locally, fails CI").
 dev = [
