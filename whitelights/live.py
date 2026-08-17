@@ -548,8 +548,14 @@ class LiveJudge:
         self._frame_idx = 0
 
     def process_frame(self, bgr_frame) -> tuple[FrameKeypoints, DepthFrameResult, LiveStatus]:
+        # device= matches PoseEstimator.run_video/run_frames — omitting it here
+        # would silently run inference on ultralytics' default device instead
+        # of whatever the estimator was configured with, while the batch path
+        # honoured it correctly. No live caller sets a non-default device
+        # today (api/runtime.py always constructs PoseEstimator() bare), so
+        # this had no observable effect yet — worth fixing before it does.
         result = self.estimator.model.predict(
-            source=bgr_frame, conf=self.estimator.conf, verbose=False
+            source=bgr_frame, conf=self.estimator.conf, device=self.estimator.device, verbose=False
         )
         raw2d = result_to_frame(result[0], self._frame_idx, self.fps, self.estimator.subject)
         frame2d = self.smoother.smooth(raw2d)
