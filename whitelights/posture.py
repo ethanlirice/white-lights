@@ -76,28 +76,6 @@ def knee_angle_deg(frame: FrameKeypoints3D, side: str, min_confidence: float) ->
     return joint_angle_deg(frame, f"{side}_hip", f"{side}_knee", f"{side}_ankle", min_confidence)
 
 
-def elbow_angle_deg(frame: FrameKeypoints3D, side: str, min_confidence: float) -> float | None:
-    """Interior shoulder-elbow-wrist angle (degrees) for one arm, or None (bench)."""
-    return joint_angle_deg(
-        frame, f"{side}_shoulder", f"{side}_elbow", f"{side}_wrist", min_confidence
-    )
-
-
-def arms_locked(frame: FrameKeypoints3D, config: PostureConfig) -> bool | None:
-    """Are both elbows locked in this frame? The more-bent arm governs.
-
-    Returns True/False when at least one arm is measurable, else None.
-    """
-    angles = [
-        a
-        for side in _SIDES
-        if (a := elbow_angle_deg(frame, side, config.min_confidence)) is not None
-    ]
-    if not angles:
-        return None
-    return min(angles) >= config.lockout_elbow_angle_deg
-
-
 def is_locked_out(frame: FrameKeypoints3D, config: PostureConfig) -> bool | None:
     """Are both knees locked in this frame?
 
@@ -214,19 +192,3 @@ def _angle_deg(u: tuple[float, float, float], v: tuple[float, float, float]) -> 
         return None
     cos = sum(a * b for a, b in zip(u, v, strict=True)) / (nu * nv)
     return math.degrees(math.acos(max(-1.0, min(1.0, cos))))
-
-
-def _mean_thigh_length(frames: list[FrameKeypoints3D], min_confidence: float) -> float | None:
-    lengths: list[float] = []
-    for f in frames:
-        for side in _SIDES:
-            hip = f.get(f"{side}_hip")
-            knee = f.get(f"{side}_knee")
-            if hip is None or knee is None:
-                continue
-            if min(hip.confidence, knee.confidence) < min_confidence:
-                continue
-            lengths.append(math.dist((hip.x, hip.y, hip.z), (knee.x, knee.y, knee.z)))
-    if not lengths:
-        return None
-    return sum(lengths) / len(lengths)
