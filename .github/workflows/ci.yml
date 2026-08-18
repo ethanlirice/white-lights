@@ -18,7 +18,11 @@ jobs:
 
       - name: Install (light deps only — no torch/opencv needed for lint+tests)
         run: |
-          python -m pip install --upgrade pip
+          # setuptools explicitly, not just pip: `--upgrade pip` does not
+          # upgrade it, and actions/setup-python's runner image ships one old
+          # enough to carry a since-disclosed CVE (PYSEC-2026-3447) — pip-audit
+          # below exists to catch exactly this, so it needs a clean baseline.
+          python -m pip install --upgrade pip setuptools
           pip install -e ".[api,dev]"
 
       - name: Ruff lint
