@@ -185,7 +185,9 @@
   <footer>History lives in your browser's local storage. Export it before clearing your site data.</footer>
 </main>
 
-<script>
+<script type="module">
+import { mergeHistory } from './lib/history.mjs';
+
 (function(){
   "use strict";
 
@@ -346,8 +348,7 @@
     reader.onload = function(){
       try{
         var incoming = JSON.parse(reader.result);
-        if (!Array.isArray(incoming)) throw new Error('not an array');
-        saveHistory(incoming.concat(loadHistory()));
+        saveHistory(mergeHistory(incoming, loadHistory()));
         render();
       }catch(e){ alert('Could not import history: ' + e.message); }
       importFile.value = '';

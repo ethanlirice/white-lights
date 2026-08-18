@@ -512,6 +512,7 @@
 </div>
 
 <script type="module">
+import { mergeHistory } from './lib/history.mjs';
 import { SQUAT_DEPTH_THRESHOLD, synthPose } from './lib/poses.mjs';
 
 (function(){
@@ -659,9 +660,7 @@ import { SQUAT_DEPTH_THRESHOLD, synthPose } from './lib/poses.mjs';
     reader.onload = function(){
       try{
         var incoming = JSON.parse(reader.result);
-        if (!Array.isArray(incoming)) throw new Error('not an array');
-        var current = loadHistory();
-        saveHistory(incoming.concat(current));
+        saveHistory(mergeHistory(incoming, loadHistory()));
         renderHistory();
       }catch(e){ alert('Could not import history: ' + e.message); }
       importFile.value = '';
