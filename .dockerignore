@@ -12,4 +12,14 @@ data
 *.mov
 *.avi
 *.pt
+*.onnx
 .DS_Store
+
+# JS test tooling (package.json / vitest) is dev-only — the container never
+# runs npm. node_modules alone runs ~34 MB; excluding it (not just from git,
+# which .gitignore already does — Docker has its own, separate build context)
+# is the difference between a fast COPY and needlessly shipping test-runner
+# internals into every image build. web/lib/*.mjs (the modules the pages
+# actually import at runtime via api/main.py's /lib mount) are NOT excluded.
+node_modules
+web/lib/*.test.mjs
