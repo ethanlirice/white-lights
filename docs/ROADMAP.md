@@ -38,7 +38,7 @@ interfaces.
 - **Frontend logic is tested, not just typed carefully.** `web/lib/*.mjs` holds
   the pure logic three pages used to carry inline — pose synthesis, history
   aggregation, chart math — imported as native ES modules (no bundler) and
-  covered by 45 Vitest cases, wired into CI as its own job. Writing the first
+  covered by 51 Vitest cases, wired into CI as its own job. Writing the first
   of these immediately found a real bug no amount of careful reading had:
   the demo squat's checkpoint light and its depth-overlay lines were computed
   independently and disagreed with each other for the entire back half of

@@ -105,8 +105,8 @@ confidence, the list of `Fault`s, and the depth margin.
 - **Uncertainty as a feature.** Confidence-gating and a first-class `UNCERTAIN`
   verdict mean borderline calls are surfaced, not guessed — important because a
   pose estimator's "locked out" is noisy and rarely a clean 180°.
-- **Deterministic tests for stochastic input.** The 180-test Python suite (plus
-  45 Vitest cases over the frontend's pure logic — see `web/lib/`) drives the
+- **Deterministic tests for stochastic input.** The 186-test Python suite (plus
+  51 Vitest cases over the frontend's pure logic — see `web/lib/`) drives the
   trackers with hand-built synthetic keypoint traces (known good / high /
   double-bounce / early-command …), so judging logic is tested exactly without a
   camera or model.

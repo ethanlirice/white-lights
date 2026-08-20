@@ -117,7 +117,7 @@ Every stage started as a stub with `strict` xfail tests
 fixtures — implementing a stub correctly flipped its xfail to a failure
 (XPASS), a built-in reminder to remove the marker. None of that scaffolding is
 load-bearing today: every stage shipped, so it's all real, passing tests now
-(180 Python + 45 Vitest — see `docs/ROADMAP.md` for what each covers). It's
+(186 Python + 51 Vitest — see `docs/ROADMAP.md` for what each covers). It's
 worth keeping the pattern in mind for whatever's implemented next.
 
 `tests/conftest.py`'s synthetic fixtures (known good / high / double-bounce 3D
