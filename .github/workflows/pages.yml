@@ -28,7 +28,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Assemble site
         run: |
           mkdir -p _site
@@ -42,8 +42,8 @@ jobs:
           mkdir -p _site/lib
           cp web/lib/*.mjs _site/lib/
           rm -f _site/lib/*.test.mjs  # tests aren't part of the shipped page
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

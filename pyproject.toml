@@ -43,7 +43,7 @@ onnx = [
 # format/lint results match local exactly (avoids "clean locally, fails CI").
 dev = [
     "pytest>=8.0",
-    "ruff==0.15.21",
+    "ruff==0.16.2",
     "httpx>=0.27",
     "mypy>=1.11",
     "pip-audit>=2.7",
