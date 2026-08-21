@@ -75,7 +75,7 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(
     title="White Lights",
     version="2.0.0.dev0",
-    description="Real-time computer-vision squat-depth judge for powerlifting.",
+    description="Real-time computer-vision powerlifting judge — squat, bench, and deadlift.",
     lifespan=lifespan,
 )
 

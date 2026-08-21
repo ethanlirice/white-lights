@@ -1,4 +1,4 @@
-"""White Lights — real-time computer-vision squat-depth judge for powerlifting."""
+"""White Lights — real-time computer-vision powerlifting judge (squat, bench, deadlift)."""
 
 from __future__ import annotations
 
