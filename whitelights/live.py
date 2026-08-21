@@ -29,6 +29,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -46,6 +47,14 @@ from .types import (
     PoseSequence,
     RepVerdict,
 )
+
+if TYPE_CHECKING:
+    # `judges.Tracker` covers all five online judges (this module's own two,
+    # plus bench/deadlift/freereps) — the type LiveJudge actually accepts,
+    # since `set_tracker` is how every mode/lift switch replaces it. Guarded by
+    # TYPE_CHECKING (never executed) because `judges` imports from this module
+    # at runtime; importing it back would be a real cycle, not just a type one.
+    from .judges import Tracker
 
 # Re-exported for the lift modules and the API, which have always imported it
 # from here; it now lives in `types` because every tracker shares it.
@@ -522,20 +531,20 @@ class LiveJudge:
         *,
         fps: float = 30.0,
         depth_config: DepthConfig | None = None,
-        tracker: OnlineRepTracker | CompetitionTracker | None = None,
+        tracker: Tracker | None = None,
         live_config: LiveConfig | None = None,
     ) -> None:
         self.estimator = estimator or PoseEstimator()
         self.fps = fps
         self.depth_config = depth_config or DepthConfig()
-        self.tracker = tracker or OnlineRepTracker(live_config)
+        self.tracker: Tracker = tracker or OnlineRepTracker(live_config)
         self.smoother = StreamingKeypointSmoother(min_confidence=self._min_conf())
         self._frame_idx = 0
 
     def _min_conf(self) -> float:
         return getattr(self.tracker.config, "min_confidence", 0.5)
 
-    def set_tracker(self, tracker) -> None:
+    def set_tracker(self, tracker: Tracker) -> None:
         """Swap the rep/competition tracker (mode switch), keeping the model warm."""
         self.tracker = tracker
         self.smoother = StreamingKeypointSmoother(min_confidence=self._min_conf())

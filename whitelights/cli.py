@@ -8,8 +8,9 @@ capture loop and argparse have no business sitting next to the state machines.
 Run it::
 
     pip install -e ".[cv]"
-    python -m whitelights.cli               # default camera
-    python -m whitelights.cli --camera 1    # pick a different camera (see below)
+    python -m whitelights.cli                            # squat, training
+    python -m whitelights.cli --lift bench --mode competition
+    python -m whitelights.cli --camera 1                  # pick a different camera (see below)
 
 macOS note: if the feed opens on your iPhone, that is Continuity Camera grabbing
 index 0. Try ``--camera 1`` / ``--camera 2`` for the built-in FaceTime camera,
@@ -20,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 
+from .judges import LIFTS, MODES, tracker_for
 from .live import LiveJudge
 from .pose import DEFAULT_MODEL, PoseEstimator
 from .types import FrameKeypoints, LiveStatus, Verdict
@@ -46,27 +48,32 @@ def _light_color(below: bool | None) -> tuple[int, int, int]:
     return (128, 128, 128)
 
 
-def _draw_overlay(img, frame2d: FrameKeypoints, status: LiveStatus, conf: float) -> None:
+def _draw_overlay(
+    img, frame2d: FrameKeypoints, status: LiveStatus, conf: float, *, judges_depth: bool
+) -> None:
     import cv2
 
     h, w = img.shape[:2]
 
-    # Knee line (depth target): a horizontal line at the higher knee.
-    knees = [frame2d.get(f"{s}_knee") for s in _SIDES]
-    knee_ys = [int(k.y) for k in knees if k and k.confidence >= conf]
-    if knee_ys:
-        ky = min(knee_ys)
-        cv2.line(img, (0, ky), (w, ky), (0, 220, 220), 1, cv2.LINE_AA)
-        cv2.putText(
-            img,
-            "knee line",
-            (w - 130, ky - 8),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 220, 220),
-            1,
-            cv2.LINE_AA,
-        )
+    # Knee line (depth target): only meaningful for a lift that judges depth —
+    # bench/deadlift have no rule about the knee line at all, so drawing it
+    # unconditionally would show a landmark the judge underneath isn't using.
+    if judges_depth:
+        knees = [frame2d.get(f"{s}_knee") for s in _SIDES]
+        knee_ys = [int(k.y) for k in knees if k and k.confidence >= conf]
+        if knee_ys:
+            ky = min(knee_ys)
+            cv2.line(img, (0, ky), (w, ky), (0, 220, 220), 1, cv2.LINE_AA)
+            cv2.putText(
+                img,
+                "knee line",
+                (w - 130, ky - 8),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 220, 220),
+                1,
+                cv2.LINE_AA,
+            )
 
     # Skeleton (thick) + joints.
     for a, b in _SKELETON:
@@ -79,9 +86,13 @@ def _draw_overlay(img, frame2d: FrameKeypoints, status: LiveStatus, conf: float)
         if kp.confidence >= conf:
             cv2.circle(img, (int(kp.x), int(kp.y)), 6, (0, 200, 255), -1, cv2.LINE_AA)
 
-    # Top banner: light + state + note.
+    # Top banner: light + state + note. `checkpoint` — not `below_parallel` — is
+    # the generic "key checkpoint met" field (squat: below parallel; bench: bar
+    # on chest; deadlift: locked out); `below_parallel` is a squat-specific
+    # holdover that bench/deadlift's own LiveStatus always sets to None, so
+    # keying the light off it would leave it permanently grey for those lifts.
     cv2.rectangle(img, (0, 0), (w, 96), (30, 30, 30), -1)
-    cv2.circle(img, (46, 48), 26, _light_color(status.below_parallel), -1, cv2.LINE_AA)
+    cv2.circle(img, (46, 48), 26, _light_color(status.checkpoint), -1, cv2.LINE_AA)
     cv2.putText(
         img, status.state, (88, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA
     )
@@ -99,12 +110,12 @@ def _draw_overlay(img, frame2d: FrameKeypoints, status: LiveStatus, conf: float)
         cv2.LINE_AA,
     )
 
-    # Depth progress bar (how far into a rep, and whether below parallel).
+    # Progress bar (how far into a rep, and whether the checkpoint is met).
     if status.descent_fraction is not None:
         bx, by, bw, bh = 88, 108, 260, 18
         cv2.rectangle(img, (bx, by), (bx + bw, by + bh), (80, 80, 80), 1)
         fill = int(min(1.0, status.descent_fraction) * bw)
-        cv2.rectangle(img, (bx, by), (bx + fill, by + bh), _light_color(status.below_parallel), -1)
+        cv2.rectangle(img, (bx, by), (bx + fill, by + bh), _light_color(status.checkpoint), -1)
 
     # Last verdict.
     if status.last_verdict is not None:
@@ -126,10 +137,12 @@ def _draw_overlay(img, frame2d: FrameKeypoints, status: LiveStatus, conf: float)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="White Lights — live webcam squat judge")
+    parser = argparse.ArgumentParser(description="White Lights — live webcam judge")
     parser.add_argument("--camera", type=int, default=0, help="Camera index (try 1/2 for built-in)")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="YOLO11-pose weights")
     parser.add_argument("--conf", type=float, default=0.25, help="Detection confidence")
+    parser.add_argument("--lift", choices=LIFTS, default="squat")
+    parser.add_argument("--mode", choices=MODES, default="training")
     args = parser.parse_args()
 
     import cv2
@@ -139,15 +152,20 @@ def main() -> None:
         raise SystemExit(f"Could not open camera {args.camera} (try --camera 1 or 2)")
     fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
 
-    judge = LiveJudge(PoseEstimator(model_path=args.model, conf=args.conf), fps=fps)
-    print("White Lights live — press ESC or q to quit.")
+    # Same factory the WebSocket handler uses (see api/main.py's `_handle_control`)
+    # — the CLI picking its own tracker independently is exactly the kind of
+    # second implementation that drifts from the real one.
+    tracker = tracker_for(args.lift, args.mode)
+    estimator = PoseEstimator(model_path=args.model, conf=args.conf)
+    judge = LiveJudge(estimator, fps=fps, tracker=tracker)
+    print(f"White Lights live — {args.lift} / {args.mode} — press ESC or q to quit.")
     try:
         while True:
             ok, frame = cap.read()
             if not ok:
                 break
             frame2d, _depth, status = judge.process_frame(frame)
-            _draw_overlay(frame, frame2d, status, args.conf)
+            _draw_overlay(frame, frame2d, status, args.conf, judges_depth=tracker.judges_depth)
             if status.rep_completed and status.last_verdict is not None:
                 v = status.last_verdict
                 print(f"rep {v.rep_index}: {v.verdict.value} {[f.value for f in v.faults]}")
