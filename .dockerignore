@@ -23,3 +23,12 @@ data
 # actually import at runtime via api/main.py's /lib mount) are NOT excluded.
 node_modules
 web/lib/*.test.mjs
+
+# Playwright's own output — real browser binaries and test artifacts, same
+# "dev-only, never touch npm" reasoning as node_modules above. e2e/ (the
+# specs themselves) stays out too; they exercise pages the container serves,
+# not code the container runs.
+e2e
+playwright-report
+test-results
+playwright.config.mjs

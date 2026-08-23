@@ -312,7 +312,14 @@
   #compVerdictLabel.NO_LIFT{ color: var(--red); }
   #compVerdictFaults{ font-size: 14px; color: var(--text-dim); max-width: 420px; text-transform: none; letter-spacing: normal; font-family: var(--font-ui); font-weight: 400; }
   #compBanner .cta-row{ margin-top: 28px; }
-  #compBanner #newAttempt{ pointer-events: auto; padding: 12px 26px; }
+  /* Scoped to .show, matching the parent: unscoped, this re-enabled clicks on
+     the button at all times, including while the banner sits invisible
+     (opacity: 0) and full-screen behind everything else — so the always-on
+     centered hit target silently ate clicks meant for whatever else was
+     centered on screen underneath it (the camera-enable button, most
+     visibly). Found by a real click in a real browser, not by reading: the
+     bug only shows up as a hit-test miss, which nothing static catches. */
+  #compBanner.show #newAttempt{ pointer-events: auto; padding: 12px 26px; }
 
   /* ---------- history drawer ---------- */
   #historyTab{

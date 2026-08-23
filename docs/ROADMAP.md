@@ -43,6 +43,16 @@ interfaces.
   the demo squat's checkpoint light and its depth-overlay lines were computed
   independently and disagreed with each other for the entire back half of
   every rep.
+- **The pages are tested in a real browser, not just their pure logic.**
+  Vitest can't reach `<script type="module">` at all — confirmed directly
+  (jsdom does not execute module scripts) before reaching for Playwright,
+  which drives the actual pages in Chromium: `e2e/`, 15 specs, wired into CI
+  as its own job with a real browser install step. Immediately found a second
+  real bug Vitest structurally couldn't: an invisible, full-screen "New
+  Attempt" button had `pointer-events: auto` unconditionally rather than
+  scoped to `.show`, so it silently ate clicks aimed at whatever else was
+  centered on screen underneath it — a hit-testing bug only a real click in a
+  real browser can surface at all.
 
 ## Next
 

@@ -6,7 +6,7 @@ against the federation rulebook, live, with the exact fault flagged and (in
 competition mode) the referee commands issued by the computer itself.
 
 [![CI](https://github.com/ethanlirice/white-lights/actions/workflows/ci.yml/badge.svg)](https://github.com/ethanlirice/white-lights/actions/workflows/ci.yml)
-[![tests](https://img.shields.io/badge/tests-186%20python%20%2B%2051%20js-brightgreen)](tests/)
+[![tests](https://img.shields.io/badge/tests-186%20python%20%2B%2051%20js%20%2B%2015%20e2e-brightgreen)](tests/)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![ruff](https://img.shields.io/badge/lint-ruff-261230)](https://docs.astral.sh/ruff/)
@@ -80,14 +80,18 @@ file). Full data flow, module map, and design rationale:
   strictness profiles — a pose estimator's "locked out" is never a clean 180°.
 - **Tested across the stack.** 186 Python tests (including a wire-contract
   suite asserting on the exact JSON the browser receives) + 51 Vitest cases
-  over the frontend's pure logic. CI runs ruff, mypy, pytest, vitest, and
-  pip-audit on every push; Dependabot covers pip, npm, and the Actions.
+  over the frontend's pure logic + 15 Playwright tests driving the actual
+  pages in a real browser — the only way to exercise `<script type="module">`
+  at all (`jsdom` does not execute module scripts). CI runs ruff, mypy,
+  pytest, vitest, Playwright, and pip-audit on every push; Dependabot covers
+  pip, npm, and the Actions.
 
 ## Tech stack
 
 **Python 3.11** · **FastAPI** + WebSockets · **Ultralytics YOLO11-pose** (PyTorch)
 · **OpenCV** · **Pydantic v2** · vanilla JS + Canvas, pure logic as native ES
-modules (`web/lib/`) · **pytest** · **Vitest** · **ruff** · GitHub Actions.
+modules (`web/lib/`) · **pytest** · **Vitest** · **Playwright** · **ruff** ·
+GitHub Actions.
 
 ## Project layout
 
@@ -100,6 +104,7 @@ api/           FastAPI app: /live, /judge, /metrics, /lib/* (JS modules),
 web/           frontend — live.html (multi-lift judge), landing/history/stats;
                web/lib/ holds the pure logic those pages import as ES modules
 tests/         186-test pytest suite + synthetic keypoint fixtures
+e2e/           Playwright specs — the pages themselves, in a real browser
 eval/          validation harness, keypoint traces, camera-geometry sweep
 docs/          ARCHITECTURE, DESIGN, ROADMAP
 ```
@@ -117,11 +122,13 @@ Extras: `cv` (ultralytics + opencv, pulls torch), `api` (fastapi + uvicorn),
 `dev` (pytest + ruff + mypy), `onnx` (export tooling, see
 `eval/export_onnx.py`). Weights auto-download on first run.
 
-The frontend's pure logic has its own test runner — optional for running the
-app, only needed to touch `web/lib/`:
+The frontend has two test layers — both optional for running the app, only
+needed to touch `web/`:
 
 ```bash
-npm install && npm test
+npm install && npm test              # Vitest — pure logic in web/lib/
+npx playwright install chromium      # once, downloads a real browser
+npm run test:e2e                     # Playwright — the actual pages
 ```
 
 ## Run
@@ -145,7 +152,7 @@ curl -s localhost:8000/metrics
 ```
 
 ```bash
-pytest && npm test                              # 186 + 51 tests
+pytest && npm test && npm run test:e2e          # 186 + 51 + 15 tests
 ruff check . && ruff format --check . && mypy
 python -m eval.geometry                         # camera-placement envelope
 python -m eval.traces extract --clips-dir data/clips --out data/traces

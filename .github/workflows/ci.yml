@@ -59,3 +59,35 @@ jobs:
 
       - name: Vitest
         run: npm test
+
+  # Separate again from js-tests: Vitest exercises pure logic in isolation;
+  # this drives the actual pages in a real Chromium, which is the only way to
+  # exercise <script type="module"> at all (jsdom doesn't execute module
+  # scripts — confirmed directly, not assumed, before reaching for Playwright).
+  # A failure here is specifically "a page is broken in a real browser," a
+  # distinct signal from either of the other two jobs.
+  e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Playwright
+        run: npm run test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 14

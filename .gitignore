@@ -14,6 +14,9 @@ venv/
 .coverage
 htmlcov/
 node_modules/
+test-results/
+playwright-report/
+blob-report/
 
 # Models (auto-downloaded by ultralytics on first run; *.onnx is exported by
 # eval/export_onnx.py, not committed the same way *.pt is not)
